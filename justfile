@@ -20,6 +20,19 @@ run:
 fmt:
     go fmt ./...
 
+# Lint code (gofmt check + go vet)
+lint:
+    @unformatted=$(gofmt -l .); \
+    if [ -n "$unformatted" ]; then \
+        echo "❌ gofmt issues:"; echo "$unformatted"; exit 1; \
+    fi
+    go vet ./...
+
+# Install the pre-commit hook (runs `just lint` before each commit)
+install-hooks:
+    git config core.hooksPath .githooks
+    @echo "✅ pre-commit hook installed (.githooks/pre-commit)"
+
 # Tidy dependencies
 tidy:
     go mod tidy
