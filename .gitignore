@@ -3,3 +3,4 @@ wisp
 prism
 *.sock
 .crush/
+.claude/settings.local.json
