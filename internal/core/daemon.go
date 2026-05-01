@@ -1,21 +1,27 @@
-package main
+package core
 
 import (
 	"fmt"
 	"log"
-	"net"
-	"net/rpc"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 
 	"github.com/charmbracelet/ssh"
 	"github.com/charmbracelet/wish"
 	"github.com/charmbracelet/wish/logging"
 	"github.com/google/uuid"
-	"github.com/spf13/cobra"
 )
+
+var (
+	userCounts   = make(map[string]int)
+	userCountsMu sync.Mutex
+)
+
+func getClientID(user string) string {
+	userCountsMu.Lock()
+	defer userCountsMu.Unlock()
+	userCounts[user]++
+	return fmt.Sprintf("%s-%d", user, userCounts[user])
+}
 
 type ServerInfo struct {
 	ID     string
@@ -34,6 +40,12 @@ type Daemon struct {
 	servers map[string]*ServerSession
 }
 
+func NewDaemon() *Daemon {
+	return &Daemon{
+		servers: make(map[string]*ServerSession),
+	}
+}
+
 func (d *Daemon) StartServer(req *int, res *ServerInfo) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -45,7 +57,7 @@ func (d *Daemon) StartServer(req *int, res *ServerInfo) error {
 	}
 
 	id := uuid.New().String()[:8]
-	pm := newPTYManager(func() {
+	pm := NewPTYManager(func() {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		if sess, exists := d.servers[id]; exists {
@@ -132,7 +144,7 @@ func (d *Daemon) KillServer(req *string, res *bool) error {
 		return fmt.Errorf("Session %s not found", id)
 	}
 	sess.Ssh.Close()
-	sess.PTY.Close() // We need to add a Close method to PTYManager
+	sess.PTY.Close()
 	delete(d.servers, id)
 	*res = true
 	return nil
@@ -176,31 +188,4 @@ func (d *Daemon) UpServer(req *string, res *bool) error {
 	sess.Info.Status = "Active"
 	*res = true
 	return nil
-}
-
-var daemonCmd = &cobra.Command{
-	Use:   "daemon",
-	Short: "Start the Wisp management daemon",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		d := &Daemon{
-			servers: make(map[string]*ServerSession),
-		}
-		rpc.Register(d)
-
-		os.Remove("/tmp/wisp.sock")
-		l, err := net.Listen("unix", "/tmp/wisp.sock")
-		if err != nil {
-			return err
-		}
-		defer l.Close()
-
-		go rpc.Accept(l)
-		log.Println("Wisp daemon started on /tmp/wisp.sock")
-
-		done := make(chan os.Signal, 1)
-		signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-		<-done
-		log.Println("Stopping daemon")
-		return nil
-	},
 }
