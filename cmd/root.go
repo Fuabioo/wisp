@@ -2,11 +2,19 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/charmbracelet/fang"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
+	"wisp/internal/core"
+)
+
+var (
+	Version   = "dev"
+	CommitSHA = "none"
+	BuildDate = "unknown"
 )
 
 var (
@@ -20,7 +28,8 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() {
-	if err := fang.Execute(context.Background(), rootCmd); err != nil {
+	versionStr := fmt.Sprintf("\n%s\n%s %s %s", accentStyle.Render(core.GhostArt), Version, CommitSHA, BuildDate)
+	if err := fang.Execute(context.Background(), rootCmd, fang.WithVersion(versionStr)); err != nil {
 		os.Exit(1)
 	}
 }
