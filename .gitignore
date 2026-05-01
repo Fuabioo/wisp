@@ -4,3 +4,4 @@ prism
 *.sock
 .crush/
 .claude/settings.local.json
+*.upx
