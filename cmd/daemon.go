@@ -9,8 +9,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/spf13/cobra"
 	"wisp/internal/core"
+
+	"github.com/spf13/cobra"
 )
 
 var daemonCmd = &cobra.Command{
@@ -31,10 +32,10 @@ var daemonCmd = &cobra.Command{
 
 		fmt.Println(accentStyle.Render(`
    ▄██████▄
-  ██▄▀██▀▄██
+  ██▀▀██▀▀██
+  ██▄▄██▄▄██
   ██████████
-  ██▀▄▄▄▄▀██
-   ▀▄▀  ▀▄▀
+   ▀█▀  ▀█▀
 `))
 		log.Println("Wisp daemon started on /tmp/wisp.sock")
 

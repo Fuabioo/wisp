@@ -91,10 +91,10 @@ func (d *Daemon) createSshServer(port int, id string, pm *PTYManager) (*ssh.Serv
 					clientID := getClientID(s.User())
 					ghost := `
    ▄██████▄
-  ██▄▀██▀▄██
+  ██▀▀██▀▀██
+  ██▄▄██▄▄██
   ██████████
-  ██▀▄▄▄▄▀██
-   ▀▄▀  ▀▄▀`
+   ▀█▀  ▀█▀`
 					wish.Println(s, lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Render(ghost))
 					wish.Println(s, "🌈 Welcome to Wisp! 🌈")
 					wish.Printf(s, "Session ID: %s\n", id)
