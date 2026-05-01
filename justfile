@@ -43,3 +43,23 @@ check-deps:
 	@command -v goda >/dev/null 2>&1 && echo "✅ goda is installed" || echo "❌ goda is missing (run: just install-deps)"
 	@command -v gsa >/dev/null 2>&1 && echo "✅ gsa is installed" || echo "❌ gsa is missing (run: just install-deps)"
 	@command -v upx >/dev/null 2>&1 && echo "✅ upx is installed" || echo "❌ upx is missing (run: just install-deps)"
+
+# Provision wisp as a user-level systemd daemon
+provision: build-micro
+	mkdir -p ~/.local/bin
+	cp wisp ~/.local/bin/wisp
+	mkdir -p ~/.config/systemd/user
+	@echo "[Unit]" > ~/.config/systemd/user/wisp.service
+	@echo "Description=Wisp Terminal Daemon" >> ~/.config/systemd/user/wisp.service
+	@echo "After=network.target" >> ~/.config/systemd/user/wisp.service
+	@echo "" >> ~/.config/systemd/user/wisp.service
+	@echo "[Service]" >> ~/.config/systemd/user/wisp.service
+	@echo "Type=simple" >> ~/.config/systemd/user/wisp.service
+	@echo "ExecStart=%h/.local/bin/wisp daemon" >> ~/.config/systemd/user/wisp.service
+	@echo "Restart=on-failure" >> ~/.config/systemd/user/wisp.service
+	@echo "" >> ~/.config/systemd/user/wisp.service
+	@echo "[Install]" >> ~/.config/systemd/user/wisp.service
+	@echo "WantedBy=default.target" >> ~/.config/systemd/user/wisp.service
+	systemctl --user daemon-reload
+	systemctl --user enable --now wisp.service
+	@echo "✅ Wisp daemon provisioned and started via systemd!"
