@@ -30,13 +30,7 @@ var daemonCmd = &cobra.Command{
 
 		go rpc.Accept(l)
 
-		fmt.Println(accentStyle.Render(`
-   ▄██████▄
-  ██▀▀██▀▀██
-  ██  ██  ██
-  ██████████
-   ▀█▀  ▀█▀
-`))
+		fmt.Println(accentStyle.Render("\n" + core.GhostArt + "\n"))
 		log.Println("Wisp daemon started on /tmp/wisp.sock")
 
 		done := make(chan os.Signal, 1)

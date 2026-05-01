@@ -89,13 +89,7 @@ func (d *Daemon) createSshServer(port int, id string, pm *PTYManager) (*ssh.Serv
 			func(h ssh.Handler) ssh.Handler {
 				return func(s ssh.Session) {
 					clientID := getClientID(s.User())
-					ghost := `
-   ▄██████▄
-  ██▀▀██▀▀██
-  ██  ██  ██
-  ██████████
-   ▀█▀  ▀█▀`
-					wish.Println(s, lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Render(ghost))
+					wish.Println(s, lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Render("\n"+GhostArt))
 					wish.Println(s, "🌈 Welcome to Wisp! 🌈")
 					wish.Printf(s, "Session ID: %s\n", id)
 					wish.Println(s, "Authenticated as:", clientID)
