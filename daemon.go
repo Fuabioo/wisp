@@ -76,7 +76,7 @@ func (d *Daemon) createSshServer(port int, id string, pm *PTYManager) (*ssh.Serv
 			func(h ssh.Handler) ssh.Handler {
 				return func(s ssh.Session) {
 					clientID := getClientID(s.User())
-					wish.Println(s, "🌈 Welcome to Prism! 🌈")
+					wish.Println(s, "🌈 Welcome to Wisp! 🌈")
 					wish.Printf(s, "Session ID: %s\n", id)
 					wish.Println(s, "Authenticated as:", clientID)
 
@@ -180,22 +180,22 @@ func (d *Daemon) UpServer(req *string, res *bool) error {
 
 var daemonCmd = &cobra.Command{
 	Use:   "daemon",
-	Short: "Start the Prism management daemon",
+	Short: "Start the Wisp management daemon",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		d := &Daemon{
 			servers: make(map[string]*ServerSession),
 		}
 		rpc.Register(d)
 
-		os.Remove("/tmp/prism.sock")
-		l, err := net.Listen("unix", "/tmp/prism.sock")
+		os.Remove("/tmp/wisp.sock")
+		l, err := net.Listen("unix", "/tmp/wisp.sock")
 		if err != nil {
 			return err
 		}
 		defer l.Close()
 
 		go rpc.Accept(l)
-		log.Println("Prism daemon started on /tmp/prism.sock")
+		log.Println("Wisp daemon started on /tmp/wisp.sock")
 
 		done := make(chan os.Signal, 1)
 		signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)

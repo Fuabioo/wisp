@@ -221,8 +221,8 @@ func (pm *PTYManager) Close() {
 
 var (
 	rootCmd = &cobra.Command{
-		Use:   "prism",
-		Short: "Prism manages shared terminal sessions",
+		Use:   "wisp",
+		Short: "Wisp manages shared terminal sessions",
 	}
 	userCounts   = make(map[string]int)
 	userCountsMu sync.Mutex
@@ -241,7 +241,7 @@ var serverCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		port, _ := cmd.Flags().GetInt("port")
 		
-		client, err := rpc.Dial("unix", "/tmp/prism.sock")
+		client, err := rpc.Dial("unix", "/tmp/wisp.sock")
 		if err != nil {
 			return fmt.Errorf("Could not connect to daemon (is it running?): %v", err)
 		}
@@ -259,9 +259,9 @@ var serverCmd = &cobra.Command{
 
 var psCmd = &cobra.Command{
 	Use:   "ps",
-	Short: "List running Prism servers",
+	Short: "List running Wisp servers",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := rpc.Dial("unix", "/tmp/prism.sock")
+		client, err := rpc.Dial("unix", "/tmp/wisp.sock")
 		if err != nil {
 			return fmt.Errorf("Could not connect to daemon: %v", err)
 		}
@@ -274,7 +274,7 @@ var psCmd = &cobra.Command{
 		}
 
 		if len(res) == 0 {
-			fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("204")).Italic(true).Render("No Prism servers currently running."))
+			fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("204")).Italic(true).Render("No Wisp servers currently running."))
 			return nil
 		}
 
@@ -289,7 +289,7 @@ var psCmd = &cobra.Command{
 			Headers("ID", "PORT", "STATUS", "CONNECT COMMAND").
 			Rows(rows...)
 
-		fmt.Println("\n🌈 Running Prism Servers:\n")
+		fmt.Println("\n🌈 Running Wisp Servers:\n")
 		fmt.Println(t)
 		return nil
 	},
@@ -297,10 +297,10 @@ var psCmd = &cobra.Command{
 
 var killCmd = &cobra.Command{
 	Use:   "kill [uuid]",
-	Short: "Kill a running Prism server by UUID",
+	Short: "Kill a running Wisp server by UUID",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := rpc.Dial("unix", "/tmp/prism.sock")
+		client, err := rpc.Dial("unix", "/tmp/wisp.sock")
 		if err != nil {
 			return fmt.Errorf("Could not connect to daemon: %v", err)
 		}
@@ -318,10 +318,10 @@ var killCmd = &cobra.Command{
 
 var downCmd = &cobra.Command{
 	Use:   "down [uuid]",
-	Short: "Deactivate a running Prism server by UUID",
+	Short: "Deactivate a running Wisp server by UUID",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := rpc.Dial("unix", "/tmp/prism.sock")
+		client, err := rpc.Dial("unix", "/tmp/wisp.sock")
 		if err != nil {
 			return fmt.Errorf("Could not connect to daemon: %v", err)
 		}
@@ -339,10 +339,10 @@ var downCmd = &cobra.Command{
 
 var upCmd = &cobra.Command{
 	Use:   "up [uuid]",
-	Short: "Reactivate a down Prism server by UUID",
+	Short: "Reactivate a down Wisp server by UUID",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := rpc.Dial("unix", "/tmp/prism.sock")
+		client, err := rpc.Dial("unix", "/tmp/wisp.sock")
 		if err != nil {
 			return fmt.Errorf("Could not connect to daemon: %v", err)
 		}

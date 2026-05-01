@@ -1,4 +1,4 @@
-module prism
+module wisp
 
 go 1.26.2
 
