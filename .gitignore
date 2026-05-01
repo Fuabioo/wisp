@@ -2,3 +2,4 @@
 wisp
 prism
 *.sock
+.crush/
