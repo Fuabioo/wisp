@@ -228,6 +228,9 @@ var (
 	}
 	userCounts   = make(map[string]int)
 	userCountsMu sync.Mutex
+
+	successStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
+	accentStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("99"))
 )
 
 func getClientID(user string) string {
@@ -254,7 +257,7 @@ var serverCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Successfully started server on port %d (ID: %s)\n", port, res.ID)
+		cmd.Println(successStyle.Render(fmt.Sprintf("👻 Successfully started server on port %d ", port)) + accentStyle.Render(fmt.Sprintf("(ID: %s)", res.ID)))
 		return nil
 	},
 }
@@ -276,7 +279,7 @@ var psCmd = &cobra.Command{
 		}
 
 		if len(res) == 0 {
-			fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("204")).Italic(true).Render("No Wisp servers currently running."))
+			cmd.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("204")).Italic(true).Render("No Wisp servers currently running. 👻"))
 			return nil
 		}
 
@@ -287,12 +290,12 @@ var psCmd = &cobra.Command{
 
 		t := table.New().
 			Border(lipgloss.NormalBorder()).
-			BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("99"))).
+			BorderStyle(accentStyle).
 			Headers("ID", "PORT", "STATUS", "CONNECT COMMAND").
 			Rows(rows...)
 
-		fmt.Println("\n🌈 Running Wisp Servers:\n")
-		fmt.Println(t)
+		cmd.Println(accentStyle.Render("\n🌈 Running Wisp Servers:\n"))
+		cmd.Println(t)
 		return nil
 	},
 }
@@ -313,7 +316,7 @@ var killCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Successfully killed server %s\n", args[0])
+		cmd.Println(successStyle.Render("💀 Successfully killed server ") + accentStyle.Render(args[0]))
 		return nil
 	},
 }
@@ -334,7 +337,7 @@ var downCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Successfully brought down server %s\n", args[0])
+		cmd.Println(successStyle.Render("💤 Successfully brought down server ") + accentStyle.Render(args[0]))
 		return nil
 	},
 }
@@ -355,7 +358,7 @@ var upCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Successfully brought up server %s\n", args[0])
+		cmd.Println(successStyle.Render("✨ Successfully brought up server ") + accentStyle.Render(args[0]))
 		return nil
 	},
 }
