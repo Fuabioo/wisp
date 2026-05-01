@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/fang"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 	"github.com/charmbracelet/ssh"
@@ -367,8 +369,7 @@ func main() {
 	rootCmd.AddCommand(downCmd)
 	rootCmd.AddCommand(upCmd)
 
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+	if err := fang.Execute(context.Background(), rootCmd); err != nil {
 		os.Exit(1)
 	}
 }
