@@ -92,7 +92,7 @@ func (d *Daemon) createSshServer(port int, id string, pm *PTYManager) (*ssh.Serv
 					ghost := `
    ▄██████▄
   ██▀▀██▀▀██
-  ██▄▄██▄▄██
+  ██  ██  ██
   ██████████
    ▀█▀  ▀█▀`
 					wish.Println(s, lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Render(ghost))
