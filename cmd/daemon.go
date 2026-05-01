@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/rpc"
@@ -27,6 +28,18 @@ var daemonCmd = &cobra.Command{
 		defer l.Close()
 
 		go rpc.Accept(l)
+		
+		fmt.Println(accentStyle.Render(`
+      ▄▄████████▄▄
+    ▄██████████████▄
+  ▄██████████████████▄
+  ████▄▀▄██████▄▀▄████
+  ████████████████████
+  ███████▀▄▄▄▄▀███████
+  ████████████████████
+  ▀██████████████████▀
+    ▀█▄█▀  ▀█▄█▀  ▀█
+`))
 		log.Println("Wisp daemon started on /tmp/wisp.sock")
 
 		done := make(chan os.Signal, 1)
