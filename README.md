@@ -1,10 +1,15 @@
-<div align="center">
-  <img src="assets/logo-wisp.svg" alt="Wisp logo" width="220"/>
-  <h1>Wisp 👻</h1>
-  <p><em>A paranormal daemon for spawning and sharing magic terminal sessions anywhere.</em></p>
-</div>
+<table>
+<tr>
+<td valign="middle">
 
-Wisp is a lightweight, background daemon that allows you to spawn "terminal emulator agnostic" PTY sessions and share them across multiple clients. Start a session on your PC, join it via an SSH tunnel, hop in from an iPad using Blink/Termius, and type together in real-time. It's like having an invisible entity sharing your keyboard!
+Wisp 👻 is a lightweight, background daemon that allows you to spawn "terminal emulator agnostic" PTY sessions and share them across multiple clients. Start a session on your PC, join it via an SSH tunnel, hop in from an iPad using Blink/Termius, and type together in real-time. It's like having an invisible entity sharing your keyboard!
+
+</td>
+<td align="center" valign="middle" width="240">
+<img src="assets/logo-wisp.svg" alt="Wisp logo" width="220"/>
+</td>
+</tr>
+</table>
 
 ## Features
 
