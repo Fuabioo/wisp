@@ -26,8 +26,8 @@ tidy:
 
 # Install tools to analyze and reduce binary size
 install-deps:
-	go install github.com/jondot/goda@latest
-	go install github.com/edwingeng/go-size-analyzer/cmd/gsa@latest
+	go install github.com/loov/goda@latest
+	GOEXPERIMENT=jsonv2 go install github.com/Zxilly/go-size-analyzer/cmd/gsa@latest
 	@if command -v brew >/dev/null 2>&1; then brew install upx; \
 	elif command -v apt-get >/dev/null 2>&1; then sudo apt-get install -y upx-ucl; \
 	else echo "Please install UPX manually for your system."; fi
