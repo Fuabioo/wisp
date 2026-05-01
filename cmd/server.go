@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"wisp/internal/core"
+	"github.com/Fuabioo/wisp/internal/core"
 
 	"github.com/spf13/cobra"
 )

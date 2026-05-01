@@ -1,6 +1,6 @@
 package main
 
-import "wisp/cmd"
+import "github.com/Fuabioo/wisp/cmd"
 
 func main() {
 	cmd.Execute()

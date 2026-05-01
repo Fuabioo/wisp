@@ -1,8 +1,8 @@
-default: build
+default: build-micro
 
 # Build a minimally sized optimized Go binary
 build:
-    go build -trimpath -ldflags="-s -w -X 'wisp/cmd.Version=dev' -X 'wisp/cmd.CommitSHA=$(git rev-parse --short HEAD 2>/dev/null || echo none)' -X 'wisp/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)'" -o wisp .
+    go build -trimpath -ldflags="-s -w -X 'github.com/Fuabioo/wisp/cmd.Version=dev' -X 'github.com/Fuabioo/wisp/cmd.CommitSHA=$(git rev-parse --short HEAD 2>/dev/null || echo none)' -X 'github.com/Fuabioo/wisp/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)'" -o wisp .
 
 # Ultra-compressed build (requires 'upx' to be installed on your system)
 build-micro: build

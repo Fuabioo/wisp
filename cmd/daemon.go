@@ -9,7 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"wisp/internal/core"
+	"github.com/Fuabioo/wisp/internal/core"
 
 	"github.com/spf13/cobra"
 )

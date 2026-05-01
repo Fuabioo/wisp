@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/ssh"
 )
 
@@ -22,7 +22,7 @@ func RunMenu(s ssh.Session, input io.Reader, clientID string) (string, error) {
 		clientID: clientID,
 		choices:  []string{"Resume", "Disconnect"},
 	}
-	p := tea.NewProgram(m, tea.WithInput(input), tea.WithOutput(s), tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithInput(input), tea.WithOutput(s))
 	finalModel, err := p.Run()
 	if err != nil {
 		return "", err
@@ -60,7 +60,7 @@ func (m MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m MenuModel) View() string {
+func (m MenuModel) View() tea.View {
 	s := fmt.Sprintf("\n\n🌈 Wisp Pause Menu 🌈\n👤 Client: %s\n\n", m.clientID)
 
 	for i, choice := range m.choices {
@@ -72,5 +72,7 @@ func (m MenuModel) View() string {
 	}
 
 	s += "\nPress j/k to move, enter to select, esc to return to session.\n"
-	return s
+	v := tea.NewView(s)
+	v.AltScreen = true
+	return v
 }

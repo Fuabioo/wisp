@@ -10,7 +10,7 @@ Wisp is a Go daemon for spawning and sharing PTY-backed terminal sessions over S
 
 Build/run is driven by `just` (see `justfile`):
 
-- `just build` — optimized build with version vars injected via `-ldflags` (`wisp/cmd.Version`, `CommitSHA`, `BuildDate`). Output: `./wisp`.
+- `just build` — optimized build with version vars injected via `-ldflags` (`github.com/Fuabioo/wisp/cmd.Version`, `CommitSHA`, `BuildDate`). Output: `./wisp`.
 - `just build-micro` — `build` + `upx --best --lzma` compression.
 - `just daemon` — `go run . daemon` (starts the daemon).
 - `just run` — `go run .`.
@@ -50,8 +50,8 @@ Per-session SSH server is built with `wish.NewServer` using a per-port host key 
 
 ## Conventions specific to this repo
 
-- Module path is `wisp` (no domain). Imports look like `wisp/cmd`, `wisp/internal/core`.
-- Version metadata lives in `cmd/root.go` as package-level vars overridden by `-ldflags -X 'wisp/cmd.Version=...'` etc. — keep the names in sync if you rename.
+- Module path is `github.com/Fuabioo/wisp`. Imports look like `github.com/Fuabioo/wisp/cmd`, `github.com/Fuabioo/wisp/internal/core`.
+- Version metadata lives in `cmd/root.go` as package-level vars overridden by `-ldflags -X 'github.com/Fuabioo/wisp/cmd.Version=...'` etc. — keep the names in sync if you rename.
 - The Unix socket path `/tmp/wisp.sock` is hardcoded in both `cmd/daemon.go` and every client subcommand. If you change it, update both sides.
 - All daemon RPC handlers must keep the `func(req *T, res *U) error` shape or `net/rpc` will silently skip them.
 - Style helpers (`successStyle`, `accentStyle`) are in `cmd/root.go` — reuse them rather than re-creating `lipgloss` styles per command.
