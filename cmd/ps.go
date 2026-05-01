@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"net/rpc"
+
 	"wisp/internal/core"
 
 	"github.com/charmbracelet/lipgloss"
@@ -14,15 +14,14 @@ var psCmd = &cobra.Command{
 	Use:   "ps",
 	Short: "List running Wisp servers",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := rpc.Dial("unix", "/tmp/wisp.sock")
+		client, err := dialDaemon()
 		if err != nil {
-			return fmt.Errorf("Could not connect to daemon: %v", err)
+			return err
 		}
 		defer client.Close()
 
 		var res []core.ServerInfo
-		err = client.Call("Daemon.ListServers", 0, &res)
-		if err != nil {
+		if err := client.Call("Daemon.ListServers", 0, &res); err != nil {
 			return err
 		}
 

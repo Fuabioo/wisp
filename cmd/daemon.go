@@ -19,10 +19,12 @@ var daemonCmd = &cobra.Command{
 	Short: "Start the Wisp management daemon",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		d := core.NewDaemon()
-		rpc.Register(d)
+		if err := rpc.Register(d); err != nil {
+			return fmt.Errorf("register rpc: %w", err)
+		}
 
-		os.Remove("/tmp/wisp.sock")
-		l, err := net.Listen("unix", "/tmp/wisp.sock")
+		os.Remove(socketPath)
+		l, err := net.Listen("unix", socketPath)
 		if err != nil {
 			return err
 		}
@@ -31,7 +33,7 @@ var daemonCmd = &cobra.Command{
 		go rpc.Accept(l)
 
 		fmt.Println(accentStyle.Render("\n" + core.GhostArt + "\n"))
-		log.Println("Wisp daemon started on /tmp/wisp.sock")
+		log.Printf("Wisp daemon started on %s", socketPath)
 
 		done := make(chan os.Signal, 1)
 		signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)

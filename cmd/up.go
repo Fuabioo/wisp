@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-	"net/rpc"
-
 	"github.com/spf13/cobra"
 )
 
@@ -12,15 +9,14 @@ var upCmd = &cobra.Command{
 	Short: "Reactivate a down Wisp server by UUID",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := rpc.Dial("unix", "/tmp/wisp.sock")
+		client, err := dialDaemon()
 		if err != nil {
-			return fmt.Errorf("Could not connect to daemon: %v", err)
+			return err
 		}
 		defer client.Close()
 
 		var res bool
-		err = client.Call("Daemon.UpServer", &args[0], &res)
-		if err != nil {
+		if err := client.Call("Daemon.UpServer", &args[0], &res); err != nil {
 			return err
 		}
 		cmd.Println(successStyle.Render("✨ Successfully brought up server ") + accentStyle.Render(args[0]))

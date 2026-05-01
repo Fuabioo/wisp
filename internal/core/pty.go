@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -14,11 +15,13 @@ import (
 )
 
 type PTYManager struct {
-	file    *os.File
-	cmd     *exec.Cmd
-	mu      sync.Mutex
-	socks   map[ssh.Session]ssh.Window
-	onClose func()
+	file     *os.File
+	cmd      *exec.Cmd
+	mu       sync.Mutex
+	socks    map[ssh.Session]ssh.Window
+	onClose  func()
+	lastRows uint16
+	lastCols uint16
 }
 
 type chanReader struct {
@@ -39,7 +42,7 @@ func (c chanReader) Read(p []byte) (n int, err error) {
 		select {
 		case b, ok := <-c.ch:
 			if !ok {
-				return n, io.EOF
+				return n, nil
 			}
 			p[n] = b
 			n++
@@ -52,15 +55,15 @@ func (c chanReader) Read(p []byte) (n int, err error) {
 	}
 }
 
-func NewPTYManager(onClose func()) *PTYManager {
+func NewPTYManager(onClose func()) (*PTYManager, error) {
 	shell := os.Getenv("SHELL")
 	if shell == "" {
-		shell = "zsh" // fallback
+		shell = "zsh"
 	}
 	c := exec.Command(shell)
 	f, err := pty.Start(c)
 	if err != nil {
-		log.Fatalf("Failed to start pty: %v", err)
+		return nil, fmt.Errorf("start pty: %w", err)
 	}
 
 	pm := &PTYManager{
@@ -71,7 +74,7 @@ func NewPTYManager(onClose func()) *PTYManager {
 	}
 
 	go pm.broadcast()
-	return pm
+	return pm, nil
 }
 
 func (pm *PTYManager) broadcast() {
@@ -96,13 +99,25 @@ func (pm *PTYManager) broadcast() {
 		}
 
 		pm.mu.Lock()
+		sessions := make([]ssh.Session, 0, len(pm.socks))
 		for s := range pm.socks {
-			_, err := s.Write(buf[:n])
-			if err != nil {
-				delete(pm.socks, s)
-			}
+			sessions = append(sessions, s)
 		}
 		pm.mu.Unlock()
+
+		var dead []ssh.Session
+		for _, s := range sessions {
+			if _, err := s.Write(buf[:n]); err != nil {
+				dead = append(dead, s)
+			}
+		}
+		if len(dead) > 0 {
+			pm.mu.Lock()
+			for _, s := range dead {
+				delete(pm.socks, s)
+			}
+			pm.mu.Unlock()
+		}
 	}
 }
 
@@ -123,11 +138,19 @@ func (pm *PTYManager) HandleSession(s ssh.Session, clientID string) {
 				close(bytesChan)
 				return
 			}
-			for i := 0; i < n; i++ {
+			for i := range n {
 				bytesChan <- buf[i]
 			}
 		}
 	}()
+
+	writeByte := func(b byte) bool {
+		if _, err := pm.file.Write([]byte{b}); err != nil {
+			log.Printf("pty write failed for %s: %v", clientID, err)
+			return false
+		}
+		return true
+	}
 
 	var pendingBang bool
 	var timeoutChan <-chan time.Time
@@ -136,6 +159,9 @@ func (pm *PTYManager) HandleSession(s ssh.Session, clientID string) {
 		select {
 		case c, ok := <-bytesChan:
 			if !ok {
+				if pendingBang {
+					writeByte('!')
+				}
 				return
 			}
 			if pendingBang {
@@ -144,11 +170,13 @@ func (pm *PTYManager) HandleSession(s ssh.Session, clientID string) {
 				if c == '>' {
 					choice, _ := RunMenu(s, chanReader{ch: bytesChan}, clientID)
 					if choice == "Disconnect" {
+						s.Close()
 						return
 					}
 					continue
-				} else {
-					pm.file.Write([]byte{'!'})
+				}
+				if !writeByte('!') {
+					return
 				}
 			}
 
@@ -157,12 +185,16 @@ func (pm *PTYManager) HandleSession(s ssh.Session, clientID string) {
 				timeoutChan = time.After(250 * time.Millisecond)
 				continue
 			}
-			pm.file.Write([]byte{c})
+			if !writeByte(c) {
+				return
+			}
 
 		case <-timeoutChan:
 			pendingBang = false
 			timeoutChan = nil
-			pm.file.Write([]byte{'!'})
+			if !writeByte('!') {
+				return
+			}
 		}
 	}
 }
@@ -197,12 +229,17 @@ func (pm *PTYManager) updateSizeLocked() {
 			}
 		}
 	}
-	if !first {
-		pty.Setsize(pm.file, &pty.Winsize{
-			Rows: minRows,
-			Cols: minCols,
-		})
+	if first {
+		return
 	}
+	if minRows == pm.lastRows && minCols == pm.lastCols {
+		return
+	}
+	pm.lastRows, pm.lastCols = minRows, minCols
+	pty.Setsize(pm.file, &pty.Winsize{
+		Rows: minRows,
+		Cols: minCols,
+	})
 }
 
 func (pm *PTYManager) Close() {

@@ -27,7 +27,7 @@ func getClientID(user string) string {
 type ServerInfo struct {
 	ID     string
 	Port   int
-	Status string // "Active", "Down"
+	Status string
 }
 
 type ServerSession struct {
@@ -53,12 +53,12 @@ func (d *Daemon) StartServer(req *int, res *ServerInfo) error {
 	port := *req
 	for _, sess := range d.servers {
 		if sess.Info.Port == port {
-			return fmt.Errorf("Server already running on port %d", port)
+			return fmt.Errorf("server already running on port %d", port)
 		}
 	}
 
 	id := uuid.New().String()[:8]
-	pm := NewPTYManager(func() {
+	pm, err := NewPTYManager(func() {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		if sess, exists := d.servers[id]; exists {
@@ -66,9 +66,13 @@ func (d *Daemon) StartServer(req *int, res *ServerInfo) error {
 			delete(d.servers, id)
 		}
 	})
+	if err != nil {
+		return err
+	}
 
 	s, err := d.createSshServer(port, id, pm)
 	if err != nil {
+		pm.Close()
 		return err
 	}
 
@@ -143,7 +147,7 @@ func (d *Daemon) KillServer(req *string, res *bool) error {
 	id := *req
 	sess, exists := d.servers[id]
 	if !exists {
-		return fmt.Errorf("Session %s not found", id)
+		return fmt.Errorf("session %s not found", id)
 	}
 	sess.Ssh.Close()
 	sess.PTY.Close()
@@ -158,7 +162,7 @@ func (d *Daemon) DownServer(req *string, res *bool) error {
 	id := *req
 	sess, exists := d.servers[id]
 	if !exists {
-		return fmt.Errorf("Session %s not found", id)
+		return fmt.Errorf("session %s not found", id)
 	}
 	if sess.Info.Status == "Down" {
 		*res = true
@@ -176,10 +180,10 @@ func (d *Daemon) UpServer(req *string, res *bool) error {
 	id := *req
 	sess, exists := d.servers[id]
 	if !exists {
-		return fmt.Errorf("Session %s not found", id)
+		return fmt.Errorf("session %s not found", id)
 	}
 	if sess.Info.Status == "Active" {
-		return fmt.Errorf("Session %s is already active", id)
+		return fmt.Errorf("session %s is already active", id)
 	}
 
 	s, err := d.createSshServer(sess.Info.Port, sess.Info.ID, sess.PTY)

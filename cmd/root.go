@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net/rpc"
 	"os"
 
 	"wisp/internal/core"
@@ -11,6 +12,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
+
+const socketPath = "/tmp/wisp.sock"
 
 var (
 	Version   = "dev"
@@ -26,6 +29,14 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "wisp",
 	Short: "Wisp manages shared terminal sessions",
+}
+
+func dialDaemon() (*rpc.Client, error) {
+	c, err := rpc.Dial("unix", socketPath)
+	if err != nil {
+		return nil, fmt.Errorf("could not connect to daemon (is it running?): %w", err)
+	}
+	return c, nil
 }
 
 func Execute() {
