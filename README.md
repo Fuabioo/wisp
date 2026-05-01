@@ -58,3 +58,28 @@ go build -o wisp
 
 ## Menu
 While in an active shared session, type `!>` rapidly to open the Pause Menu!
+
+## Prior art
+
+The category is usually called **terminal session sharing** (or "collaborative shell" / "shared PTY" at the technical level). Notable neighbors:
+
+- **[tmate](https://tmate.io/)** — the canonical reference. Forked from tmux, ships sessions through a public relay.
+- **[upterm](https://github.com/owenthereal/upterm)** — Go daemon with a similar daemon-plus-fan-out-PTY shape; the closest architectural cousin to wisp.
+- **[sshx](https://sshx.io/)** — modern, browser-based take on the same idea.
+- **GNU `screen -x`** and **`tmux attach`** — the local-only ancestors.
+- **Teleconsole** (archived, by the Teleport authors) and **Warp**'s collaboration mode (proprietary, GUI) round out the lineage.
+
+What makes wisp distinct in that lineup: no relay (self-hosted, direct SSH), an in-band escape digraph (`!>`) into a bubbletea pause menu, and per-axis "minimum viable dimension" resize so a small client never breaks the others.
+
+## Primitive for…
+
+Wisp is really *a controllable, observable, multi-attach PTY exposed over a clean RPC*. That makes it a useful Lego brick beyond "two humans typing together":
+
+- **AI-agent observability.** Spawn the agent inside a wisp session. Humans `wisp up` to watch live, intervene through the pause menu, then `down` without killing the agent — a DVR for autonomous coding agents.
+- **Real-time peer steering for agents.** Two (or more) agents attached to the same shell, coordinating like human pair-programmers — one drives, others observe and nudge. See the swarm orchestration TODO.
+- **Attended automation / approval gates.** A CI job or deploy script runs in a wisp PTY; on a sensitive step it pauses and pings a human to attach and confirm. Pairs naturally with the planned hooks system.
+- **Classroom and livecoding broadcast.** Many read-only attachees, one driver.
+- **Remote support / shoulder-surf debugging.** A customer attaches their session, you join — like tmate, but on infrastructure you own.
+- **Recording infrastructure.** Wrap any command in wisp to get asciinema-shaped output for free.
+
+The strategic shape: wisp is best understood as a **daemon-as-platform**, where the RPC surface is a public API and other tools (agent harnesses, CI runners, support portals) embed sessions as a first-class primitive.
