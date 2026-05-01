@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 
+	"wisp/internal/core"
+
 	"github.com/charmbracelet/fang"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
-	"wisp/internal/core"
 )
 
 var (
