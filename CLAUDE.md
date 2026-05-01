@@ -20,7 +20,7 @@ Build/run is driven by `just` (see `justfile`):
 
 There are no tests yet; `go test ./...` is a no-op.
 
-CLI surface (cobra + charmbracelet/fang):
+CLI surface (cobra + `charm.land/fang/v2`):
 
 - `wisp daemon` — long-running process; owns all sessions.
 - `wisp server --port N` — asks the daemon to spawn a new SSH server.
@@ -32,7 +32,7 @@ Two-process model communicating over a Unix socket at `/tmp/wisp.sock` via Go's 
 
 - **Daemon process** (`cmd/daemon.go` → `internal/core/daemon.go`):
   - Registers `*core.Daemon` for RPC, listens on `/tmp/wisp.sock`.
-  - Holds `servers map[string]*ServerSession` guarded by a single `sync.Mutex`. Each session bundles `ServerInfo`, a `*ssh.Server` (charmbracelet/wish), and a `*PTYManager`.
+  - Holds `servers map[string]*ServerSession` guarded by a single `sync.Mutex`. Each session bundles `ServerInfo`, a `*ssh.Server` (`charm.land/wish/v2`), and a `*PTYManager`.
   - RPC methods (`StartServer`, `ListServers`, `KillServer`, `DownServer`, `UpServer`) all follow `func(req, res) error` with pointer args — required by `net/rpc`.
 - **CLI subcommands** (`cmd/*.go`): each `RunE` dials the Unix socket, calls a single RPC, prints styled output. Keep this thin — business logic stays in `internal/core`.
 
@@ -55,6 +55,7 @@ Per-session SSH server is built with `wish.NewServer` using a per-port host key 
 - The Unix socket path `/tmp/wisp.sock` is hardcoded in both `cmd/daemon.go` and every client subcommand. If you change it, update both sides.
 - All daemon RPC handlers must keep the `func(req *T, res *U) error` shape or `net/rpc` will silently skip them.
 - Style helpers (`successStyle`, `accentStyle`) are in `cmd/root.go` — reuse them rather than re-creating `lipgloss` styles per command.
+- Charm libraries are pinned to the v2 line under the `charm.land/*/v2` import paths (`bubbletea`, `lipgloss`, `wish`, `fang`, `log`). The `ssh` package is still imported from `github.com/charmbracelet/ssh` (no v2 module yet). Do not mix v1 `github.com/charmbracelet/{bubbletea,lipgloss,wish,fang}` imports back in.
 
 ## Docs
 

@@ -2,6 +2,14 @@
 
 Features and improvements not yet implemented. Not a roadmap — just ideas worth picking up.
 
+## Interactive TUI
+
+When `wisp` is invoked with no subcommand, drop into a bubbletea TUI exposing every CLI feature (server start/stop, `ps`, `up`/`down`/`kill`, attach) instead of just printing help. Subcommands keep working for scripting; the bare invocation becomes the discoverable entry point.
+
+- [ ] Session list view backed by `ListServers` RPC, with live refresh
+- [ ] Inline actions for `up` / `down` / `kill` and `server` (port prompt)
+- [ ] Surface MOTD / ghost art on the landing screen
+
 ## Configuration file
 
 A user config file (e.g. `~/.config/wisp/config.toml`) read by the daemon at startup so Wisp is customizable without rebuilding.
@@ -54,6 +62,7 @@ User-defined shell commands triggered by daemon events, similar to Claude Code's
 ## Code quality
 
 - [ ] **Tests** — currently zero. PTY fan-out, the `!>` digraph state machine, the daemon RPC handlers, and `updateSizeLocked` minimum-dimension calculation are all worth covering.
+- [ ] **Code coverage badge** — wire up `go test -cover` in CI (e.g. GitHub Actions + Codecov or coveralls) and surface the badge in `README.md`.
 - [ ] Replace `chanReader` byte-by-byte channel pipeline with a batched `bufio.Reader`-based fan-in. Same correctness, fewer allocations, batched PTY writes.
 - [ ] `userCounts` is a lifetime counter that never decrements — clients get suffixes like `fabio-47` after enough churn. Should track currently-connected count.
 - [ ] Graceful daemon shutdown — current SIGTERM handler closes immediately; should send a goodbye banner and let in-flight writes drain.
