@@ -6,6 +6,8 @@ This document provides context, architectural details, and conventions to help A
 Wisp is a lightweight daemon and CLI written in Go for spawning and sharing magic terminal (PTY) sessions. It uses a daemon-client architecture where a central daemon manages multiple SSH servers, each wrapping a shared PTY session multiplexed to multiple users.
 
 ## Project Structure
+Note: The Go module path is `github.com/Fuabioo/wisp`.
+
 - `cmd/`: CLI commands built with `spf13/cobra` (root, daemon, server, up, down, kill, ps).
 - `internal/core/`: The core business logic.
   - `daemon.go`: Daemon implementation (RPC server) and session management.
@@ -17,9 +19,9 @@ Wisp is a lightweight daemon and CLI written in Go for spawning and sharing magi
 ## Architecture & Data Flow
 1. **Daemon:** A long-running process (`just daemon`) listening on a Unix socket (`/tmp/wisp.sock`). Exposes RPC methods (e.g., `Daemon.StartServer`, `Daemon.KillServer`).
 2. **CLI Clients:** Commands like `wisp server` or `wisp down` send RPC calls to the daemon socket instead of doing the work themselves.
-3. **SSH Server:** Each session runs an independent SSH server (via `charmbracelet/wish` and `charmbracelet/ssh`) on a specific port.
+3. **SSH Server:** Each session runs an independent SSH server (via `charm.land/wish/v2` and `github.com/charmbracelet/ssh`) on a specific port.
 4. **PTY Multiplexing:** `PTYManager` spawns a single shell (`$SHELL` or `zsh`). A goroutine (`broadcast()`) reads from the PTY and pushes bytes to all connected SSH clients. It listens to window size changes and dynamically resizes the PTY to the minimum dimensions of all active clients.
-5. **Intercepting Input:** The `HandleSession` loop intercepts client input. If it detects the `!>` sequence, it pauses input forwarding and brings up a local interactive menu using `bubbletea` via `RunMenu`.
+5. **Intercepting Input:** The `HandleSession` loop intercepts client input. If it detects the `!>` sequence, it pauses input forwarding and brings up a local interactive menu using `bubbletea/v2` via `RunMenu`.
 
 ## Concurrency Patterns & Gotchas
 - **Mutexes:** Both `Daemon` and `PTYManager` rely heavily on `sync.Mutex`. Always lock when mutating `servers` maps or iterating through active `socks` (connections).
@@ -38,6 +40,6 @@ The project uses `just` as a command runner (see `justfile`):
 - `just install-deps` - Installs binary analysis tools (`goda`, `gsa`) and `upx`.
 
 ## Dependencies & Ecosystem
-- Relies heavily on the Charm ecosystem: `wish`, `ssh`, `lipgloss`, `bubbletea`. When building TUI components or styling, refer to Charm standard practices.
+- Relies heavily on the Charm ecosystem (`charm.land/*/v2`): `wish/v2`, `ssh` (v1), `lipgloss/v2`, `bubbletea/v2`, `fang/v2`. When building TUI components or styling, refer to Charm standard practices.
 - CLI uses `spf13/cobra`.
 - PTY management handled by `github.com/creack/pty`.

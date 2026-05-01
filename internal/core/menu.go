@@ -61,7 +61,7 @@ func (m MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m MenuModel) View() tea.View {
-	s := fmt.Sprintf("\n\n🌈 Wisp Pause Menu 🌈\n👤 Client: %s\n\n", m.clientID)
+	s := fmt.Sprintf("\n%s\n\n🌈 Wisp Pause Menu 🌈\n👤 Client: %s\n\n", GhostArt, m.clientID)
 
 	for i, choice := range m.choices {
 		cursor := " "
