@@ -4,28 +4,60 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/rpc"
 	"os"
 	"os/exec"
-	"os/signal"
 	"strings"
 	"sync"
-	"syscall"
+	"time"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"github.com/charmbracelet/ssh"
-	"github.com/charmbracelet/wish"
-	"github.com/charmbracelet/wish/logging"
 	"github.com/creack/pty"
 	"github.com/spf13/cobra"
 )
 
 type PTYManager struct {
-	file  *os.File
-	cmd   *exec.Cmd
-	mu    sync.Mutex
-	socks map[ssh.Session]ssh.Window
+	file    *os.File
+	cmd     *exec.Cmd
+	mu      sync.Mutex
+	socks   map[ssh.Session]ssh.Window
+	onClose func()
 }
 
-func newPTYManager() *PTYManager {
+type chanReader struct {
+	ch <-chan byte
+}
+
+func (c chanReader) Read(p []byte) (n int, err error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	b, ok := <-c.ch
+	if !ok {
+		return 0, io.EOF
+	}
+	p[0] = b
+	n = 1
+	for {
+		select {
+		case b, ok := <-c.ch:
+			if !ok {
+				return n, io.EOF
+			}
+			p[n] = b
+			n++
+			if n == len(p) {
+				return n, nil
+			}
+		default:
+			return n, nil
+		}
+	}
+}
+
+func newPTYManager(onClose func()) *PTYManager {
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "zsh" // fallback
@@ -37,9 +69,10 @@ func newPTYManager() *PTYManager {
 	}
 
 	pm := &PTYManager{
-		file:  f,
-		cmd:   c,
-		socks: make(map[ssh.Session]ssh.Window),
+		file:    f,
+		cmd:     c,
+		socks:   make(map[ssh.Session]ssh.Window),
+		onClose: onClose,
 	}
 
 	go pm.broadcast()
@@ -53,7 +86,15 @@ func (pm *PTYManager) broadcast() {
 		if err != nil {
 			if err == io.EOF || strings.Contains(err.Error(), "input/output error") {
 				log.Println("PTY closed")
-				os.Exit(0)
+				pm.mu.Lock()
+				for s := range pm.socks {
+					s.Close()
+				}
+				pm.mu.Unlock()
+				if pm.onClose != nil {
+					pm.onClose()
+				}
+				return
 			}
 			log.Printf("Failed to read from pty: %v", err)
 			return
@@ -70,7 +111,7 @@ func (pm *PTYManager) broadcast() {
 	}
 }
 
-func (pm *PTYManager) HandleSession(s ssh.Session) {
+func (pm *PTYManager) HandleSession(s ssh.Session, clientID string) {
 	defer func() {
 		pm.mu.Lock()
 		delete(pm.socks, s)
@@ -78,8 +119,57 @@ func (pm *PTYManager) HandleSession(s ssh.Session) {
 		pm.mu.Unlock()
 	}()
 
-	// Read client input and send to PTY
-	io.Copy(pm.file, s)
+	bytesChan := make(chan byte, 1024)
+	go func() {
+		buf := make([]byte, 1024)
+		for {
+			n, err := s.Read(buf)
+			if err != nil {
+				close(bytesChan)
+				return
+			}
+			for i := 0; i < n; i++ {
+				bytesChan <- buf[i]
+			}
+		}
+	}()
+
+	var pendingBang bool
+	var timeoutChan <-chan time.Time
+
+	for {
+		select {
+		case c, ok := <-bytesChan:
+			if !ok {
+				return
+			}
+			if pendingBang {
+				pendingBang = false
+				timeoutChan = nil
+				if c == '>' {
+					choice, _ := RunMenu(s, chanReader{ch: bytesChan}, clientID)
+					if choice == "Disconnect" {
+						return
+					}
+					continue
+				} else {
+					pm.file.Write([]byte{'!'})
+				}
+			}
+
+			if c == '!' {
+				pendingBang = true
+				timeoutChan = time.After(250 * time.Millisecond)
+				continue
+			}
+			pm.file.Write([]byte{c})
+
+		case <-timeoutChan:
+			pendingBang = false
+			timeoutChan = nil
+			pm.file.Write([]byte{'!'})
+		}
+	}
 }
 
 func (pm *PTYManager) Resize(s ssh.Session, win ssh.Window) {
@@ -120,70 +210,162 @@ func (pm *PTYManager) updateSizeLocked() {
 	}
 }
 
-var rootCmd = &cobra.Command{
-	Use:   "prism",
-	Short: "Prism manages shared terminal sessions",
+func (pm *PTYManager) Close() {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.file.Close()
+	if pm.cmd != nil && pm.cmd.Process != nil {
+		pm.cmd.Process.Kill()
+	}
+}
+
+var (
+	rootCmd = &cobra.Command{
+		Use:   "prism",
+		Short: "Prism manages shared terminal sessions",
+	}
+	userCounts   = make(map[string]int)
+	userCountsMu sync.Mutex
+)
+
+func getClientID(user string) string {
+	userCountsMu.Lock()
+	defer userCountsMu.Unlock()
+	userCounts[user]++
+	return fmt.Sprintf("%s-%d", user, userCounts[user])
 }
 
 var serverCmd = &cobra.Command{
 	Use:   "server",
-	Short: "Start the Prism SSH daemon",
+	Short: "Start a new SSH server on the specified port",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		port, _ := cmd.Flags().GetInt("port")
 		
-		pm := newPTYManager()
+		client, err := rpc.Dial("unix", "/tmp/prism.sock")
+		if err != nil {
+			return fmt.Errorf("Could not connect to daemon (is it running?): %v", err)
+		}
+		defer client.Close()
 
-		s, err := wish.NewServer(
-			wish.WithAddress(fmt.Sprintf(":%d", port)),
-			wish.WithHostKeyPath(".ssh/term_info_ed25519"),
-			wish.WithMiddleware(
-				func(h ssh.Handler) ssh.Handler {
-					return func(s ssh.Session) {
-						wish.Println(s, "🌈 Welcome to Prism! 🌈")
-						wish.Println(s, "Authenticated as:", s.User())
-						
-						ptyReq, winCh, isPty := s.Pty()
-						if !isPty {
-							wish.Println(s, "No PTY requested")
-							return
-						}
-						
-						pm.Resize(s, ptyReq.Window)
-						go func() {
-							for win := range winCh {
-								pm.Resize(s, win)
-							}
-						}()
+		var res ServerInfo
+		err = client.Call("Daemon.StartServer", &port, &res)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Successfully started server on port %d (ID: %s)\n", port, res.ID)
+		return nil
+	},
+}
 
-						pm.HandleSession(s)
-					}
-				},
-				logging.Middleware(),
-			),
-		)
+var psCmd = &cobra.Command{
+	Use:   "ps",
+	Short: "List running Prism servers",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client, err := rpc.Dial("unix", "/tmp/prism.sock")
+		if err != nil {
+			return fmt.Errorf("Could not connect to daemon: %v", err)
+		}
+		defer client.Close()
+
+		var res []ServerInfo
+		err = client.Call("Daemon.ListServers", 0, &res)
 		if err != nil {
 			return err
 		}
 
-		done := make(chan os.Signal, 1)
-		signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+		if len(res) == 0 {
+			fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("204")).Italic(true).Render("No Prism servers currently running."))
+			return nil
+		}
 
-		log.Printf("Starting SSH server on :%d", port)
-		go func() {
-			if err = s.ListenAndServe(); err != nil {
-				log.Fatal(err)
-			}
-		}()
+		rows := make([][]string, 0, len(res))
+		for _, info := range res {
+			rows = append(rows, []string{info.ID, fmt.Sprintf("%d", info.Port), info.Status, fmt.Sprintf("ssh -p %d localhost", info.Port)})
+		}
 
-		<-done
-		log.Println("Stopping SSH server")
-		return s.Close()
+		t := table.New().
+			Border(lipgloss.NormalBorder()).
+			BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("99"))).
+			Headers("ID", "PORT", "STATUS", "CONNECT COMMAND").
+			Rows(rows...)
+
+		fmt.Println("\n🌈 Running Prism Servers:\n")
+		fmt.Println(t)
+		return nil
+	},
+}
+
+var killCmd = &cobra.Command{
+	Use:   "kill [uuid]",
+	Short: "Kill a running Prism server by UUID",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client, err := rpc.Dial("unix", "/tmp/prism.sock")
+		if err != nil {
+			return fmt.Errorf("Could not connect to daemon: %v", err)
+		}
+		defer client.Close()
+
+		var res bool
+		err = client.Call("Daemon.KillServer", &args[0], &res)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Successfully killed server %s\n", args[0])
+		return nil
+	},
+}
+
+var downCmd = &cobra.Command{
+	Use:   "down [uuid]",
+	Short: "Deactivate a running Prism server by UUID",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client, err := rpc.Dial("unix", "/tmp/prism.sock")
+		if err != nil {
+			return fmt.Errorf("Could not connect to daemon: %v", err)
+		}
+		defer client.Close()
+
+		var res bool
+		err = client.Call("Daemon.DownServer", &args[0], &res)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Successfully brought down server %s\n", args[0])
+		return nil
+	},
+}
+
+var upCmd = &cobra.Command{
+	Use:   "up [uuid]",
+	Short: "Reactivate a down Prism server by UUID",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client, err := rpc.Dial("unix", "/tmp/prism.sock")
+		if err != nil {
+			return fmt.Errorf("Could not connect to daemon: %v", err)
+		}
+		defer client.Close()
+
+		var res bool
+		err = client.Call("Daemon.UpServer", &args[0], &res)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Successfully brought up server %s\n", args[0])
+		return nil
 	},
 }
 
 func main() {
 	serverCmd.Flags().IntP("port", "p", 2222, "Port to listen on")
 	rootCmd.AddCommand(serverCmd)
+	rootCmd.AddCommand(daemonCmd)
+	rootCmd.AddCommand(psCmd)
+	rootCmd.AddCommand(killCmd)
+	rootCmd.AddCommand(downCmd)
+	rootCmd.AddCommand(upCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
