@@ -37,3 +37,9 @@ install-dev: build-micro
 	mkdir -p ~/.local/bin
 	mv wisp ~/.local/bin/wisp-dev
 	@echo "wisp-dev installed to ~/.local/bin/wisp-dev"
+
+# Check if required tools are installed
+check-deps:
+	@command -v goda >/dev/null 2>&1 && echo "✅ goda is installed" || echo "❌ goda is missing (run: just install-deps)"
+	@command -v gsa >/dev/null 2>&1 && echo "✅ gsa is installed" || echo "❌ gsa is missing (run: just install-deps)"
+	@command -v upx >/dev/null 2>&1 && echo "✅ upx is installed" || echo "❌ upx is missing (run: just install-deps)"
