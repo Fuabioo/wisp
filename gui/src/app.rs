@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use cosmic::app::{Core, Task};
 use cosmic::iced::{event, window, Length, Subscription};
-use cosmic::widget::{button, container, text, Column, Row};
+use cosmic::widget::{button, container, nav_bar, text, Column, Row};
 use cosmic::Element;
 
 use crate::backend::{CliBackend, PeerInfo, ServerInfo, WispBackend};
@@ -15,7 +15,7 @@ use crate::theme;
 pub struct WispAdmin {
     core: Core,
     pub backend: Arc<dyn WispBackend>,
-    pub page: Page,
+    pub nav: nav_bar::Model,
     pub sessions: Vec<ServerInfo>,
     pub selected: Option<String>,
     pub peers: HashMap<String, Vec<PeerInfo>>,
@@ -50,6 +50,17 @@ pub enum Page {
     About,
 }
 
+impl Page {
+    fn label(self) -> &'static str {
+        match self {
+            Page::Fleet => "Fleet",
+            Page::Daemon => "Daemon",
+            Page::Settings => "Settings",
+            Page::About => "About",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SpawnDrawerState {
     pub open: bool,
@@ -79,7 +90,6 @@ pub enum Message {
     Tick,
     AnimTick,
     WindowFocused(bool),
-    SwitchPage(Page),
     SelectSession(String),
 
     SessionsLoaded(Result<Vec<ServerInfo>, String>),
@@ -152,10 +162,25 @@ impl cosmic::Application for WispAdmin {
             host = %settings.connect_host,
             "settings loaded"
         );
+        let mut nav = nav_bar::Model::default();
+        nav.insert()
+            .text(Page::Fleet.label())
+            .data::<Page>(Page::Fleet)
+            .activate();
+        nav.insert()
+            .text(Page::Daemon.label())
+            .data::<Page>(Page::Daemon);
+        nav.insert()
+            .text(Page::Settings.label())
+            .data::<Page>(Page::Settings);
+        nav.insert()
+            .text(Page::About.label())
+            .data::<Page>(Page::About);
+
         let app = WispAdmin {
             core,
             backend: backend.clone(),
-            page: Page::Fleet,
+            nav,
             sessions: Vec::new(),
             selected: None,
             peers: HashMap::new(),
@@ -206,10 +231,6 @@ impl cosmic::Application for WispAdmin {
                 } else {
                     Task::none()
                 }
-            }
-            Message::SwitchPage(page) => {
-                self.page = page;
-                Task::none()
             }
             Message::SelectSession(id) => {
                 self.selected = Some(id.clone());
@@ -461,17 +482,25 @@ impl cosmic::Application for WispAdmin {
         }
     }
 
+    fn nav_model(&self) -> Option<&nav_bar::Model> {
+        Some(&self.nav)
+    }
+
+    fn on_nav_select(&mut self, id: nav_bar::Id) -> Task<Self::Message> {
+        self.nav.activate(id);
+        Task::none()
+    }
+
     fn view(&self) -> Element<'_, Self::Message> {
-        let body: Element<'_, Self::Message> = match self.page {
+        let page = self.active_page();
+        let body: Element<'_, Self::Message> = match page {
             Page::Fleet => crate::pages::fleet::view(self),
             Page::Daemon => crate::pages::daemon::view(self),
             Page::Settings => crate::pages::settings::view(self),
             Page::About => crate::pages::about::view(self),
         };
 
-        let mut layout = Column::new()
-            .push(crate::components::daemon_ribbon::view(self))
-            .push(self.nav_view());
+        let mut layout = Column::new().push(crate::components::daemon_ribbon::view(self));
 
         if let Some(banner) = self.error_banner() {
             layout = layout.push(banner);
@@ -508,30 +537,11 @@ impl cosmic::Application for WispAdmin {
 }
 
 impl WispAdmin {
-    fn nav_view(&self) -> Element<'_, Message> {
-        let tab = |label: &'static str, page: Page| -> Element<'_, Message> {
-            if self.page == page {
-                button::suggested(label)
-                    .on_press(Message::SwitchPage(page))
-                    .into()
-            } else {
-                button::standard(label)
-                    .on_press(Message::SwitchPage(page))
-                    .into()
-            }
-        };
-
-        container(
-            Row::new()
-                .push(tab("Fleet", Page::Fleet))
-                .push(tab("Daemon", Page::Daemon))
-                .push(tab("Settings", Page::Settings))
-                .push(tab("About", Page::About))
-                .spacing(8)
-                .padding(12),
-        )
-        .width(Length::Fill)
-        .into()
+    fn active_page(&self) -> Page {
+        self.nav
+            .data::<Page>(self.nav.active())
+            .copied()
+            .unwrap_or(Page::Fleet)
     }
 
     fn error_banner(&self) -> Option<Element<'_, Message>> {
