@@ -23,7 +23,12 @@ fn main() -> cosmic::iced::Result {
         .unwrap_or_else(|_| EnvFilter::new("info"))
         .add_directive("cosmic::theme=off".parse().unwrap())
         .add_directive("cosmic::app::cosmic=off".parse().unwrap())
-        .add_directive("winit_wayland::window::state=error".parse().unwrap());
+        .add_directive("winit_wayland::window::state=error".parse().unwrap())
+        // tiny_skia (resvg's painter) warns whenever a gradient's
+        // endpoints collapse to a single point or a horizontal/vertical
+        // line — happens at the loop boundary of our pre-baked SVG
+        // frames. Visually harmless, log-spammy.
+        .add_directive("tiny_skia=error".parse().unwrap());
 
     tracing_subscriber::fmt().with_env_filter(filter).init();
 

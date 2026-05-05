@@ -33,6 +33,8 @@ pub struct WispAdmin {
     pub anim_phase: f32,
     pub settings: Settings,
     pub settings_draft: Settings,
+    pub hovered_session: Option<String>,
+    pub hovered_peer: Option<(String, String)>,
 }
 
 /// Master cycle for the ghost shimmer — chosen to match the longest SMIL
@@ -132,6 +134,11 @@ pub enum Message {
     ToggleSidebar,
     ApplyInitialSettings,
 
+    SessionHoverEnter(String),
+    SessionHoverExit(String),
+    PeerHoverEnter(String, String),
+    PeerHoverExit(String, String),
+
     DismissError,
 }
 
@@ -206,6 +213,8 @@ impl cosmic::Application for WispAdmin {
             anim_phase: 0.0,
             settings_draft: settings.clone(),
             settings,
+            hovered_session: None,
+            hovered_peer: None,
         };
 
         let initial_load = Task::perform(
@@ -232,16 +241,7 @@ impl cosmic::Application for WispAdmin {
             }
             Message::AnimTick => {
                 let step = ANIM_TICK_MS as f32 / 1000.0 / ANIM_CYCLE_SECS;
-                let next = (self.anim_phase + step) % 1.0;
-                // Only mutate state — and thus trigger an iced re-render —
-                // when the rendered frame would actually differ. Otherwise
-                // we'd churn the whole widget tree at 10 Hz to draw the
-                // same ghost frame.
-                if crate::components::ghost_art::phase_to_frame(next)
-                    != crate::components::ghost_art::phase_to_frame(self.anim_phase)
-                {
-                    self.anim_phase = next;
-                }
+                self.anim_phase = (self.anim_phase + step) % 1.0;
                 Task::none()
             }
             Message::WindowFocused(focused) => {
@@ -535,6 +535,26 @@ impl cosmic::Application for WispAdmin {
                     Task::none()
                 }
             }
+            Message::SessionHoverEnter(id) => {
+                self.hovered_session = Some(id);
+                Task::none()
+            }
+            Message::SessionHoverExit(id) => {
+                if self.hovered_session.as_ref() == Some(&id) {
+                    self.hovered_session = None;
+                }
+                Task::none()
+            }
+            Message::PeerHoverEnter(s, c) => {
+                self.hovered_peer = Some((s, c));
+                Task::none()
+            }
+            Message::PeerHoverExit(s, c) => {
+                if self.hovered_peer.as_ref() == Some(&(s, c)) {
+                    self.hovered_peer = None;
+                }
+                Task::none()
+            }
             Message::DismissError => {
                 self.last_error = None;
                 Task::none()
@@ -656,10 +676,9 @@ impl WispAdmin {
 
     fn context_menu_items(&self) -> Vec<menu::Tree<Message>> {
         let item = |label: &'static str, msg: Message| -> menu::Tree<Message> {
-            let element: Element<'static, Message> = button::standard(label)
-                .on_press(msg)
-                .width(Length::Fixed(220.0))
-                .into();
+            let btn = cosmic::widget::menu::menu_button(vec![text(label).into()])
+                .on_press(msg);
+            let element: Element<'static, Message> = btn.into();
             menu::Tree::new(element)
         };
         vec![

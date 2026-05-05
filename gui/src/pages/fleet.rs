@@ -2,14 +2,16 @@
 // spine (right), event tape (bottom). Spawn drawer overlays the spine when
 // open. See the wireframe in the design plan.
 
-use cosmic::iced::{Alignment, Length};
-use cosmic::widget::{button, container, list, scrollable, text, text_input, Column, Row};
+use cosmic::iced::{Alignment, Background, Border, Color, Length};
+use cosmic::widget::{
+    button, container, mouse_area, scrollable, text, text_input, Column, Row,
+};
 use cosmic::Element;
 
 use crate::app::{Message, WispAdmin};
 use crate::backend::{PeerInfo, ServerInfo};
 use crate::components::peers_table::{self, PeerCategory};
-use crate::components::{event_tape, ghost_art, session_orb, util};
+use crate::components::{event_tape, ghost_art, util};
 use crate::theme;
 
 pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
@@ -41,19 +43,24 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
 }
 
 fn rail_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
-    let mut col = Column::new().spacing(8).padding(12).push(
-        button::suggested("+ spawn session").on_press(Message::OpenSpawnDrawer),
+    let mut col = Column::new().spacing(6).padding(12).push(
+        button::suggested("+ spawn session")
+            .on_press(Message::OpenSpawnDrawer)
+            .width(Length::Fill),
     );
 
     if app.sessions.is_empty() {
         col = col.push(text("No sessions yet."));
     } else {
+        col = col.push(text("").size(4));
         for session in &app.sessions {
             let is_selected = app.selected.as_ref() == Some(&session.id);
-            col = col.push(session_orb::view(
+            let is_hovered = app.hovered_session.as_ref() == Some(&session.id);
+            col = col.push(session_rail_item(
                 session,
                 app.peer_count(&session.id),
                 is_selected,
+                is_hovered,
             ));
         }
     }
@@ -62,6 +69,58 @@ fn rail_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
         .class(cosmic::style::Container::Background)
         .height(Length::Fill)
         .width(Length::Fill)
+        .into()
+}
+
+fn session_rail_item<'a>(
+    session: &'a ServerInfo,
+    peer_count: usize,
+    selected: bool,
+    hovered: bool,
+) -> Element<'a, Message> {
+    let dot = if session.is_active() { "●" } else { "○" };
+    let dot_color = if session.is_active() {
+        theme::ALIVE
+    } else {
+        theme::ROSE
+    };
+    let pip_cluster: String = "◉".repeat(peer_count.min(8));
+
+    let header = Row::new()
+        .push(text(dot).class(dot_color))
+        .push(text(format!(" {}", session.short_id())).font(cosmic::font::mono()))
+        .push(text(format!("  :{}", session.port)).font(cosmic::font::mono()))
+        .spacing(0);
+
+    let sub = Row::new()
+        .push(text(session.status.label()).class(theme::status_color(session.is_active())))
+        .push(text("  ·  "))
+        .push(text(format!(
+            "{} peer{}",
+            peer_count,
+            if peer_count == 1 { "" } else { "s" }
+        )))
+        .push(text(format!("  {}", pip_cluster)))
+        .spacing(0);
+
+    let inner = Column::new()
+        .push(header)
+        .push(sub)
+        .spacing(2)
+        .padding(8)
+        .width(Length::Fill);
+
+    let styled = container(inner)
+        .style(row_style(selected, hovered))
+        .width(Length::Fill);
+
+    let id_press = session.id.clone();
+    let id_enter = session.id.clone();
+    let id_exit = session.id.clone();
+    mouse_area(styled)
+        .on_press(Message::SelectSession(id_press))
+        .on_enter(Message::SessionHoverEnter(id_enter))
+        .on_exit(Message::SessionHoverExit(id_exit))
         .into()
 }
 
@@ -159,6 +218,11 @@ fn peers_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Me
     }
 
     let selected_client = app.selected_peers.get(&session.id);
+    let hovered_client = app
+        .hovered_peer
+        .as_ref()
+        .filter(|(s, _)| s == &session.id)
+        .map(|(_, c)| c);
 
     let header_row = Row::new()
         .push(sort_header(PeerCategory::Client, &session.id, sort))
@@ -168,17 +232,11 @@ fn peers_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Me
         .spacing(0);
 
     let now = chrono::Utc::now();
-    let mut list = list::list_column().list_item_padding(8);
+    let mut rows = Column::new().spacing(2);
     for peer in sorted {
         let is_selected = selected_client == Some(&peer.client_id);
-        list = list.add(
-            list::button(peer_row(peer, now))
-                .selected(is_selected)
-                .on_press(Message::SelectPeer(
-                    session.id.clone(),
-                    peer.client_id.clone(),
-                )),
-        );
+        let is_hovered = hovered_client == Some(&peer.client_id);
+        rows = rows.push(peer_table_row(&session.id, peer, now, is_selected, is_hovered));
     }
 
     let kick_action: Element<'a, Message> = match selected_client {
@@ -199,7 +257,7 @@ fn peers_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Me
         Column::new()
             .push(title_row)
             .push(header_row)
-            .push(list.into_element())
+            .push(rows)
             .spacing(8)
             .padding(8),
     )
@@ -226,8 +284,14 @@ fn sort_header<'a>(
         .into()
 }
 
-fn peer_row<'a>(peer: &'a PeerInfo, now: chrono::DateTime<chrono::Utc>) -> Element<'a, Message> {
-    Row::new()
+fn peer_table_row<'a>(
+    session_id: &'a str,
+    peer: &'a PeerInfo,
+    now: chrono::DateTime<chrono::Utc>,
+    selected: bool,
+    hovered: bool,
+) -> Element<'a, Message> {
+    let inner = Row::new()
         .push(
             text(peer.client_id.as_str())
                 .font(cosmic::font::mono())
@@ -252,7 +316,54 @@ fn peer_row<'a>(peer: &'a PeerInfo, now: chrono::DateTime<chrono::Utc>) -> Eleme
         )
         .spacing(12)
         .align_y(Alignment::Center)
+        .padding(6);
+
+    let styled = container(inner)
+        .style(row_style(selected, hovered))
+        .width(Length::Fill);
+
+    let s_press = session_id.to_string();
+    let c_press = peer.client_id.clone();
+    let s_enter = session_id.to_string();
+    let c_enter = peer.client_id.clone();
+    let s_exit = session_id.to_string();
+    let c_exit = peer.client_id.clone();
+    mouse_area(styled)
+        .on_press(Message::SelectPeer(s_press, c_press))
+        .on_enter(Message::PeerHoverEnter(s_enter, c_enter))
+        .on_exit(Message::PeerHoverExit(s_exit, c_exit))
         .into()
+}
+
+/// Hover-aware container style for selectable list rows. WISP-tinted
+/// background — strong when selected, light on hover, transparent at rest.
+fn row_style(
+    selected: bool,
+    hovered: bool,
+) -> impl Fn(&cosmic::Theme) -> container::Style + 'static {
+    move |_theme| {
+        let alpha = if selected {
+            0.28
+        } else if hovered {
+            0.10
+        } else {
+            0.0
+        };
+        let mut style = container::Style::default();
+        if alpha > 0.0 {
+            style.background = Some(Background::Color(Color {
+                r: theme::WISP.r,
+                g: theme::WISP.g,
+                b: theme::WISP.b,
+                a: alpha,
+            }));
+        }
+        style.border = Border {
+            radius: 8.0.into(),
+            ..Default::default()
+        };
+        style
+    }
 }
 
 fn actions_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Message> {
