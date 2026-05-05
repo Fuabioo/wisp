@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"log"
+	"sort"
 	"sync"
 
 	"charm.land/lipgloss/v2"
@@ -166,10 +167,19 @@ func (d *Daemon) createSshServer(port int, id string, pm *PTYManager) (*ssh.Serv
 func (d *Daemon) ListServers(req *int, res *[]ServerInfo) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	var infos []ServerInfo
+	infos := make([]ServerInfo, 0, len(d.servers))
 	for _, sess := range d.servers {
 		infos = append(infos, sess.Info)
 	}
+	// Sort by port so the order is stable across calls. Map iteration in Go
+	// is randomised, which would otherwise spam consumers (CLI / GUI) with
+	// "the list changed" signals on every poll.
+	sort.Slice(infos, func(i, j int) bool {
+		if infos[i].Port != infos[j].Port {
+			return infos[i].Port < infos[j].Port
+		}
+		return infos[i].ID < infos[j].ID
+	})
 	*res = infos
 	return nil
 }

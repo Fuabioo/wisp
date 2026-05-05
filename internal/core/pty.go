@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -164,8 +165,8 @@ func (pm *PTYManager) Resize(s ssh.Session, win ssh.Window) {
 	pm.updateSizeLocked()
 }
 
-// Peers returns a snapshot of the currently attached clients. Safe to call
-// from any goroutine; ordering is not stable.
+// Peers returns a snapshot of the currently attached clients, ordered by
+// connection time (oldest first) so polling consumers see a stable list.
 func (pm *PTYManager) Peers() []PeerInfo {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
@@ -179,6 +180,12 @@ func (pm *PTYManager) Peers() []PeerInfo {
 			ConnectedAt: entry.ConnectedAt,
 		})
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].ConnectedAt.Equal(out[j].ConnectedAt) {
+			return out[i].ConnectedAt.Before(out[j].ConnectedAt)
+		}
+		return out[i].ClientID < out[j].ClientID
+	})
 	return out
 }
 
