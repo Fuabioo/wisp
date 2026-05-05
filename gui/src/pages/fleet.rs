@@ -3,19 +3,14 @@
 // open. See the wireframe in the design plan.
 
 use cosmic::iced::{Alignment, Length};
+use cosmic::widget::table;
 use cosmic::widget::{button, container, scrollable, text, text_input, Column, Row};
 use cosmic::Element;
 
 use crate::app::{Message, WispAdmin};
 use crate::backend::ServerInfo;
-use crate::components::{event_tape, ghost_art, peer_row, session_orb, util};
+use crate::components::{event_tape, ghost_art, session_orb};
 use crate::theme;
-
-/// Cap the console preview so we don't hand iced an unbounded text node.
-/// 8 KiB ≈ 80×100 chars, generous for a quick-glance preview pane.
-const CONSOLE_VISIBLE_BYTES: usize = 8 * 1024;
-/// Height of the console pane in the detail spine.
-const CONSOLE_HEIGHT: f32 = 220.0;
 
 pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
     let rail = rail_view(app);
@@ -86,7 +81,6 @@ fn spine_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
         .push(header_view(session, app.anim_phase))
         .push(connect_view(session))
         .push(peers_view(app, session))
-        .push(console_view(app, session))
         .push(actions_view(app, session))
         .spacing(16)
         .width(Length::Fill)
@@ -130,70 +124,63 @@ fn connect_view<'a>(session: &'a ServerInfo) -> Element<'a, Message> {
 }
 
 fn peers_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Message> {
-    match app.peers.get(&session.id) {
-        Some(peers) if !peers.is_empty() => {
-            let now = chrono::Utc::now();
-            let mut col = Column::new()
-                .spacing(4)
-                .padding(4)
-                .push(text("peers").size(14));
-            for peer in peers {
-                col = col.push(peer_row::view(&session.id, peer, now));
-            }
-            container(col)
-                .class(cosmic::style::Container::Card)
-                .width(Length::Fill)
-                .into()
-        }
-        _ => container(
+    let peer_count = app.peer_count(&session.id);
+    if peer_count == 0 {
+        return container(
             Column::new()
+                .push(text("peers").size(14))
                 .push(text("(no peers attached) 👻"))
+                .spacing(4)
                 .padding(8),
         )
         .class(cosmic::style::Container::Card)
         .width(Length::Fill)
-        .into(),
+        .into();
     }
-}
 
-fn console_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Message> {
-    let raw = app
-        .tails
-        .get(&session.id)
-        .map(String::as_str)
-        .unwrap_or_default();
-
-    let stripped = util::strip_ansi(raw);
-    let visible = if stripped.len() > CONSOLE_VISIBLE_BYTES {
-        // Tail-of-tail: keep the most recent slice. Walk backwards from the
-        // end to a char boundary so we don't slice mid-codepoint.
-        let cut = stripped.len().saturating_sub(CONSOLE_VISIBLE_BYTES);
-        let cut = (cut..=stripped.len())
-            .find(|i| stripped.is_char_boundary(*i))
-            .unwrap_or(cut);
-        stripped[cut..].to_string()
-    } else {
-        stripped
+    let Some(peer_model) = app.peer_models.get(&session.id) else {
+        // Should not happen — peers > 0 but model not yet built. Fall back
+        // to the empty card while the next poll fills it in.
+        return container(text("(loading peers…)")).padding(8).into();
     };
 
-    let body: Element<Message> = if visible.trim().is_empty() {
-        text("(no recent output)").into()
-    } else {
-        scrollable(
-            Column::new()
-                .push(text(visible).font(cosmic::font::mono()).size(11))
-                .padding(8),
-        )
-        .height(Length::Fixed(CONSOLE_HEIGHT))
-        .into()
+    let session_id_click = session.id.clone();
+    let session_id_dbl = session.id.clone();
+    let session_id_sort = session.id.clone();
+    let entity_map_dbl = peer_model.entity_to_client.clone();
+
+    let table_widget: Element<'a, Message> = table::table(&peer_model.model)
+        .on_item_left_click(move |entity| Message::SelectPeer(session_id_click.clone(), entity))
+        .on_item_double_click(move |entity| {
+            let client_id = entity_map_dbl.get(&entity).cloned().unwrap_or_default();
+            Message::KickPeer(session_id_dbl.clone(), client_id)
+        })
+        .on_category_left_click(move |cat| Message::SortPeers(session_id_sort.clone(), cat))
+        .width(Length::Fill)
+        .into();
+
+    let kick_action: Element<'a, Message> = match app.selected_peer_client_id(&session.id) {
+        Some(client_id) => button::destructive(format!("kick {}", client_id))
+            .on_press(Message::KickPeer(session.id.clone(), client_id))
+            .into(),
+        None => text("(click a row to select; double-click to kick)")
+            .class(theme::ROSE)
+            .into(),
     };
+
+    let header_row = Row::new()
+        .push(text(format!("peers · {}", peer_count)).size(14))
+        .push(container(text("")).width(Length::Fill))
+        .push(kick_action)
+        .spacing(8)
+        .align_y(Alignment::Center);
 
     container(
         Column::new()
-            .push(text("console").size(14))
-            .push(body)
-            .spacing(4)
-            .padding(4),
+            .push(header_row)
+            .push(table_widget)
+            .spacing(8)
+            .padding(8),
     )
     .class(cosmic::style::Container::Card)
     .width(Length::Fill)

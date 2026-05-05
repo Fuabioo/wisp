@@ -71,5 +71,9 @@ pub trait WispBackend: Send + Sync {
     async fn kill(&self, session_id: &str) -> anyhow::Result<()>;
     async fn kick(&self, session_id: &str, client_id: &str) -> anyhow::Result<()>;
     async fn refresh(&self, session_id: &str) -> anyhow::Result<()>;
+    /// Returns up to ~64 KiB of recent PTY output. Currently unused — the
+    /// in-app console pane is opt-in and disabled by default; method is
+    /// kept on the trait so re-enabling the pane is a one-call change.
+    #[allow(dead_code)]
     async fn get_tail(&self, session_id: &str) -> anyhow::Result<String>;
 }

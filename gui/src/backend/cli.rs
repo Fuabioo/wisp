@@ -28,6 +28,7 @@ struct ActionResult {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct TailEnvelope {
     #[serde(default)]
     tail: String,

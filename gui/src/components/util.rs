@@ -13,6 +13,11 @@ pub fn humanize_duration(d: chrono::Duration) -> String {
 /// byte stream can be shown in a plain text widget without escape codes
 /// rendering as garbage. Lossy (loses colours, cursor positioning) — meant
 /// for a quick-glance preview, not full TUI rendering.
+///
+/// Currently unused — the in-app console pane that consumed it is opt-in
+/// and disabled by default. Kept in tree because re-enabling the console
+/// is a small follow-up and this helper has no external deps.
+#[allow(dead_code)]
 pub fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars();
