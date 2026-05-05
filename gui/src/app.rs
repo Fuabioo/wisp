@@ -24,7 +24,15 @@ pub struct WispAdmin {
     pub last_error: Option<String>,
     pub event_tape: Vec<EventEntry>,
     pub window_focused: bool,
+    pub anim_phase: f32,
 }
+
+/// Master cycle for the ghost shimmer — chosen to match the longest SMIL
+/// period on the source SVG (the teal stop-colour, 11 s) so all
+/// sub-animations complete at least one cycle inside it.
+/// `ghost_art::view` decomposes this into per-attribute timings.
+const ANIM_CYCLE_SECS: f32 = 11.0;
+const ANIM_TICK_MS: u64 = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -60,6 +68,7 @@ pub enum EventKind {
 #[derive(Debug, Clone)]
 pub enum Message {
     Tick,
+    AnimTick,
     WindowFocused(bool),
     SwitchPage(Page),
     SelectSession(String),
@@ -131,6 +140,7 @@ impl cosmic::Application for WispAdmin {
             last_error: None,
             event_tape: Vec::with_capacity(200),
             window_focused: true,
+            anim_phase: 0.0,
         };
 
         let initial_load = Task::perform(
@@ -150,6 +160,11 @@ impl cosmic::Application for WispAdmin {
                     "tick → polling backend"
                 );
                 self.poll()
+            }
+            Message::AnimTick => {
+                let step = ANIM_TICK_MS as f32 / 1000.0 / ANIM_CYCLE_SECS;
+                self.anim_phase = (self.anim_phase + step) % 1.0;
+                Task::none()
             }
             Message::WindowFocused(focused) => {
                 if focused != self.window_focused {
@@ -371,7 +386,9 @@ impl cosmic::Application for WispAdmin {
 
         if self.window_focused {
             let tick = cosmic::iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick);
-            Subscription::batch([tick, focus])
+            let anim = cosmic::iced::time::every(Duration::from_millis(ANIM_TICK_MS))
+                .map(|_| Message::AnimTick);
+            Subscription::batch([tick, anim, focus])
         } else {
             focus
         }

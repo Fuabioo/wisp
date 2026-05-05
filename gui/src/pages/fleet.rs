@@ -70,14 +70,14 @@ fn spine_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
     }
 
     let Some(selected_id) = &app.selected else {
-        return empty_state_view();
+        return empty_state_view(app.anim_phase);
     };
     let Some(session) = app.sessions.iter().find(|s| &s.id == selected_id) else {
-        return empty_state_view();
+        return empty_state_view(app.anim_phase);
     };
 
     Column::new()
-        .push(header_view(session))
+        .push(header_view(session, app.anim_phase))
         .push(connect_view(session))
         .push(peers_view(app, session))
         .push(actions_view(app, session))
@@ -87,9 +87,9 @@ fn spine_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
         .into()
 }
 
-fn header_view<'a>(session: &'a ServerInfo) -> Element<'a, Message> {
+fn header_view<'a>(session: &'a ServerInfo, anim_phase: f32) -> Element<'a, Message> {
     Column::new()
-        .push(ghost_art::view::<Message>(96.0))
+        .push(ghost_art::view::<Message>(96.0, anim_phase))
         .push(
             text(format!("session · {}", session.short_id()))
                 .size(20)
@@ -202,10 +202,10 @@ fn spawn_drawer_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
     .into()
 }
 
-fn empty_state_view<'a>() -> Element<'a, Message> {
+fn empty_state_view<'a>(anim_phase: f32) -> Element<'a, Message> {
     container(
         Column::new()
-            .push(ghost_art::view::<Message>(200.0))
+            .push(ghost_art::view::<Message>(200.0, anim_phase))
             .push(text("No wisps yet.").size(20))
             .push(text("Summon your first session to begin."))
             .push(button::suggested("+ spawn session").on_press(Message::OpenSpawnDrawer))
