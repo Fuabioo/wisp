@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use cosmic::app::{Core, Task};
 use cosmic::iced::{event, keyboard, window, Length, Subscription};
-use cosmic::widget::{button, container, menu, nav_bar, text, Column, Row};
+use cosmic::widget::{button, container, nav_bar, popover, text, Column, Row};
 use cosmic::Element;
 
 use crate::backend::{CliBackend, PeerInfo, ServerInfo, WispBackend};
@@ -35,6 +35,7 @@ pub struct WispAdmin {
     pub settings_draft: Settings,
     pub hovered_session: Option<String>,
     pub hovered_peer: Option<(String, String)>,
+    pub menu_open: bool,
 }
 
 /// Master cycle for the ghost shimmer — chosen to match the longest SMIL
@@ -139,11 +140,8 @@ pub enum Message {
     PeerHoverEnter(String, String),
     PeerHoverExit(String, String),
 
-    /// Cosmic surface plumbing for the right-click menu. We don't act on
-    /// these — they're produced by `context_menu.on_surface_action(..)`
-    /// and are intercepted by the framework — but we need a Message
-    /// variant to receive them so the wayland popup path activates.
-    SurfaceAction(cosmic::surface::Action),
+    OpenMenu,
+    CloseMenu,
 
     DismissError,
 }
@@ -221,6 +219,7 @@ impl cosmic::Application for WispAdmin {
             settings,
             hovered_session: None,
             hovered_peer: None,
+            menu_open: false,
         };
 
         let initial_load = Task::perform(
@@ -561,9 +560,12 @@ impl cosmic::Application for WispAdmin {
                 }
                 Task::none()
             }
-            // The framework intercepts these — we just absorb the message.
-            Message::SurfaceAction(action) => {
-                let _ = action;
+            Message::OpenMenu => {
+                self.menu_open = true;
+                Task::none()
+            }
+            Message::CloseMenu => {
+                self.menu_open = false;
                 Task::none()
             }
             Message::DismissError => {
@@ -629,14 +631,15 @@ impl cosmic::Application for WispAdmin {
             .height(Length::Fill)
             .into();
 
-        // Right-click anywhere in the body opens this menu — handy when
-        // window decorations are off and the user can't reach the sidebar
-        // toggle to navigate. on_surface_action activates the wayland
-        // popup path (overlay path adds parent translation to the menu
-        // position, which off-screened the popup ~80% to the right).
-        cosmic::widget::context_menu(main, Some(self.context_menu_items()))
-            .on_surface_action(Message::SurfaceAction)
-            .into()
+        // Hamburger menu trigger lives in the daemon ribbon. When
+        // `menu_open` is true the popover overlays a small panel of nav
+        // shortcuts on top of the body — useful when decorations are
+        // hidden and the sidebar toggle is unreachable.
+        let mut pop = popover(main);
+        if self.menu_open {
+            pop = pop.popup(self.menu_popup());
+        }
+        pop.into()
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
@@ -689,26 +692,36 @@ impl WispAdmin {
         }
     }
 
-    fn context_menu_items(&self) -> Vec<menu::Tree<Message>> {
-        // menu_button defaults to Length::Fill, which without an outer
-        // bound expands the popover to the parent's full width and skews
-        // its anchor far right of the click. Clamp at both the button's
-        // explicit width and the menu Tree width so the popover sizes
-        // around 220 px and anchors at the cursor.
-        const ITEM_WIDTH: u16 = 220;
-        let item = |label: &'static str, msg: Message| -> menu::Tree<Message> {
-            let btn = cosmic::widget::menu::menu_button(vec![text(label).into()])
+    /// Dropdown panel shown by the hamburger button in the daemon
+    /// ribbon. Each entry closes the menu after acting so a single click
+    /// both navigates and dismisses. Position is centred over the body
+    /// because cosmic's popover only exposes Center / Bottom / fixed
+    /// Point — we trade cursor anchoring for a predictable, always-
+    /// reachable panel.
+    fn menu_popup(&self) -> Element<'_, Message> {
+        let item = |label: &'static str, msg: Message| -> Element<'_, Message> {
+            button::standard(label)
                 .on_press(msg)
-                .width(Length::Fixed(ITEM_WIDTH as f32));
-            let element: Element<'static, Message> = btn.into();
-            menu::Tree::new(element).width(ITEM_WIDTH)
+                .width(Length::Fill)
+                .into()
         };
-        vec![
-            item("Fleet", Message::NavigateTo(Page::Fleet)),
-            item("Settings", Message::NavigateTo(Page::Settings)),
-            item("About", Message::NavigateTo(Page::About)),
-            item("Toggle sidebar  (Ctrl+B)", Message::ToggleSidebar),
-        ]
+        container(
+            Column::new()
+                .push(item("Go to Fleet", Message::NavigateTo(Page::Fleet)))
+                .push(item("Go to Daemon", Message::NavigateTo(Page::Daemon)))
+                .push(item("Go to Settings", Message::NavigateTo(Page::Settings)))
+                .push(item("Go to About", Message::NavigateTo(Page::About)))
+                .push(item(
+                    "Toggle sidebar  (Ctrl+B)",
+                    Message::ToggleSidebar,
+                ))
+                .push(item("Close menu", Message::CloseMenu))
+                .spacing(4)
+                .padding(12)
+                .max_width(280.0),
+        )
+        .class(cosmic::style::Container::Card)
+        .into()
     }
 
     fn error_banner(&self) -> Option<Element<'_, Message>> {

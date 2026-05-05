@@ -147,28 +147,45 @@ fn spine_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
 }
 
 fn header_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Message> {
+    // Obsidian-style icon buttons: 36×36, single emoji, transparent
+    // chrome with the cosmic Icon button class providing the hover tint.
+    let icon_btn = |glyph: &'static str, msg: Message| -> Element<'a, Message> {
+        button::custom(text(glyph).size(18))
+            .padding(6)
+            .class(cosmic::theme::Button::Icon)
+            .width(Length::Fixed(36.0))
+            .height(Length::Fixed(36.0))
+            .on_press(msg)
+            .into()
+    };
+    let danger_icon_btn = |glyph: &'static str, msg: Message| -> Element<'a, Message> {
+        button::custom(text(glyph).size(18))
+            .padding(6)
+            .class(cosmic::theme::Button::Destructive)
+            .width(Length::Fixed(36.0))
+            .height(Length::Fixed(36.0))
+            .on_press(msg)
+            .into()
+    };
+
     let action_area: Element<'a, Message> = if app.kill_confirm.as_ref() == Some(&session.id) {
         Row::new()
             .push(text("kill?"))
-            .push(button::standard("✗").on_press(Message::CancelKill))
-            .push(button::destructive("✓").on_press(Message::ConfirmKill(session.id.clone())))
+            .push(icon_btn("✗", Message::CancelKill))
+            .push(danger_icon_btn("✓", Message::ConfirmKill(session.id.clone())))
             .spacing(6)
             .align_y(Alignment::Center)
             .into()
     } else {
         let toggle: Element<'a, Message> = if session.is_active() {
-            button::standard("💤")
-                .on_press(Message::DownSession(session.id.clone()))
-                .into()
+            icon_btn("💤", Message::DownSession(session.id.clone()))
         } else {
-            button::suggested("✨")
-                .on_press(Message::UpSession(session.id.clone()))
-                .into()
+            icon_btn("✨", Message::UpSession(session.id.clone()))
         };
         Row::new()
             .push(toggle)
-            .push(button::standard("🔁").on_press(Message::RefreshSession(session.id.clone())))
-            .push(button::destructive("💀").on_press(Message::AskKill(session.id.clone())))
+            .push(icon_btn("🔁", Message::RefreshSession(session.id.clone())))
+            .push(danger_icon_btn("💀", Message::AskKill(session.id.clone())))
             .spacing(6)
             .align_y(Alignment::Center)
             .into()
