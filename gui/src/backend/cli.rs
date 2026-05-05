@@ -142,9 +142,14 @@ impl WispBackend for CliBackend {
         self.exec_json(&["peers", session_id]).await
     }
 
-    async fn start_server(&self, port: u16) -> Result<ServerInfo> {
+    async fn start_server(&self, port: u16, shell: &str) -> Result<ServerInfo> {
         let port_str = port.to_string();
-        let envelope = self.exec_action(&["server", "--port", &port_str]).await?;
+        let mut args: Vec<&str> = vec!["server", "--port", &port_str];
+        if !shell.is_empty() {
+            args.push("--shell");
+            args.push(shell);
+        }
+        let envelope = self.exec_action(&args).await?;
         Ok(ServerInfo {
             id: envelope
                 .id

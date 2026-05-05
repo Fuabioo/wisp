@@ -3,13 +3,13 @@
 // open. See the wireframe in the design plan.
 
 use cosmic::iced::{Alignment, Length};
-use cosmic::widget::table;
-use cosmic::widget::{button, container, scrollable, text, text_input, Column, Row};
+use cosmic::widget::{button, container, list, scrollable, text, text_input, Column, Row};
 use cosmic::Element;
 
 use crate::app::{Message, WispAdmin};
-use crate::backend::ServerInfo;
-use crate::components::{event_tape, ghost_art, session_orb};
+use crate::backend::{PeerInfo, ServerInfo};
+use crate::components::peers_table::{self, PeerCategory};
+use crate::components::{event_tape, ghost_art, session_orb, util};
 use crate::theme;
 
 pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
@@ -79,7 +79,7 @@ fn spine_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
 
     Column::new()
         .push(header_view(session, app.anim_phase))
-        .push(connect_view(session))
+        .push(connect_view(app, session))
         .push(peers_view(app, session))
         .push(actions_view(app, session))
         .spacing(16)
@@ -110,10 +110,15 @@ fn header_view<'a>(session: &'a ServerInfo, anim_phase: f32) -> Element<'a, Mess
         .into()
 }
 
-fn connect_view<'a>(session: &'a ServerInfo) -> Element<'a, Message> {
+fn connect_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Message> {
+    let host = if app.settings.connect_host.is_empty() {
+        "localhost"
+    } else {
+        app.settings.connect_host.as_str()
+    };
     container(
         Row::new()
-            .push(text(format!("ssh -p {} localhost", session.port)).font(cosmic::font::mono()))
+            .push(text(format!("ssh -p {} {}", session.port, host)).font(cosmic::font::mono()))
             .spacing(8)
             .padding(8)
             .align_y(Alignment::Center),
@@ -124,7 +129,8 @@ fn connect_view<'a>(session: &'a ServerInfo) -> Element<'a, Message> {
 }
 
 fn peers_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Message> {
-    let peer_count = app.peer_count(&session.id);
+    let peers = app.peers.get(&session.id);
+    let peer_count = peers.map(Vec::len).unwrap_or(0);
     if peer_count == 0 {
         return container(
             Column::new()
@@ -137,45 +143,52 @@ fn peers_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Me
         .width(Length::Fill)
         .into();
     }
+    let peers = peers.unwrap();
 
-    let Some(peer_model) = app.peer_models.get(&session.id) else {
-        // Should not happen — peers > 0 but model not yet built. Fall back
-        // to the empty card while the next poll fills it in.
-        return container(text("(loading peers…)")).padding(8).into();
-    };
+    let sort = app.peer_sorts.get(&session.id).copied();
+    let mut sorted: Vec<&PeerInfo> = peers.iter().collect();
+    if let Some((category, ascending)) = sort {
+        sorted.sort_by(|a, b| {
+            let ord = peers_table::compare(a, b, category);
+            if ascending {
+                ord
+            } else {
+                ord.reverse()
+            }
+        });
+    }
 
-    let session_id_click = session.id.clone();
-    let session_id_dbl = session.id.clone();
-    let session_id_sort = session.id.clone();
-    let entity_map_dbl = peer_model.entity_to_client.clone();
-
-    let table_widget: Element<'a, Message> = table::table(&peer_model.model)
-        .on_item_left_click(move |entity| Message::SelectPeer(session_id_click.clone(), entity))
-        .on_item_double_click(move |entity| {
-            let client_id = entity_map_dbl.get(&entity).cloned().unwrap_or_default();
-            Message::KickPeer(session_id_dbl.clone(), client_id)
-        })
-        .on_category_left_click(move |cat| Message::SortPeers(session_id_sort.clone(), cat))
-        // Workaround for a libcosmic bug: the table wraps every row and
-        // every header in `widget::context_menu`, and that widget's diff()
-        // unwraps a None context-menu unconditionally (panic). The default
-        // builders return None. Returning Some(vec![]) (an empty menu)
-        // sidesteps the panic without showing anything on right-click.
-        .item_context(|_| Some(Vec::new()))
-        .category_context(|_| Some(Vec::new()))
-        .width(Length::Fill)
-        .into();
-
-    let kick_action: Element<'a, Message> = match app.selected_peer_client_id(&session.id) {
-        Some(client_id) => button::destructive(format!("kick {}", client_id))
-            .on_press(Message::KickPeer(session.id.clone(), client_id))
-            .into(),
-        None => text("(click a row to select; double-click to kick)")
-            .class(theme::ROSE)
-            .into(),
-    };
+    let selected_client = app.selected_peers.get(&session.id);
 
     let header_row = Row::new()
+        .push(sort_header(PeerCategory::Client, &session.id, sort))
+        .push(sort_header(PeerCategory::Window, &session.id, sort))
+        .push(sort_header(PeerCategory::Remote, &session.id, sort))
+        .push(sort_header(PeerCategory::Attached, &session.id, sort))
+        .spacing(0);
+
+    let now = chrono::Utc::now();
+    let mut list = list::list_column().list_item_padding(8);
+    for peer in sorted {
+        let is_selected = selected_client == Some(&peer.client_id);
+        list = list.add(
+            list::button(peer_row(peer, now))
+                .selected(is_selected)
+                .on_press(Message::SelectPeer(
+                    session.id.clone(),
+                    peer.client_id.clone(),
+                )),
+        );
+    }
+
+    let kick_action: Element<'a, Message> = match selected_client {
+        Some(client_id) => button::destructive(format!("kick {}", client_id))
+            .on_press(Message::KickPeer(session.id.clone(), client_id.clone()))
+            .into(),
+        None => text("(click a row to select)").class(theme::ROSE).into(),
+    };
+
+    let title_row = Row::new()
         .push(text(format!("peers · {}", peer_count)).size(14))
         .push(container(text("")).width(Length::Fill))
         .push(kick_action)
@@ -184,14 +197,62 @@ fn peers_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Me
 
     container(
         Column::new()
+            .push(title_row)
             .push(header_row)
-            .push(table_widget)
+            .push(list.into_element())
             .spacing(8)
             .padding(8),
     )
     .class(cosmic::style::Container::Card)
     .width(Length::Fill)
     .into()
+}
+
+fn sort_header<'a>(
+    category: PeerCategory,
+    session_id: &str,
+    current: Option<(PeerCategory, bool)>,
+) -> Element<'a, Message> {
+    let indicator = match current {
+        Some((c, true)) if c == category => " ▲",
+        Some((c, false)) if c == category => " ▼",
+        _ => "",
+    };
+    let label = format!("{}{}", category.label(), indicator);
+    let session_id = session_id.to_string();
+    button::text(label)
+        .on_press(Message::SortPeers(session_id, category))
+        .width(Length::FillPortion(category.width_portion()))
+        .into()
+}
+
+fn peer_row<'a>(peer: &'a PeerInfo, now: chrono::DateTime<chrono::Utc>) -> Element<'a, Message> {
+    Row::new()
+        .push(
+            text(peer.client_id.as_str())
+                .font(cosmic::font::mono())
+                .width(Length::FillPortion(PeerCategory::Client.width_portion())),
+        )
+        .push(
+            text(format!("{}×{}", peer.width, peer.height))
+                .font(cosmic::font::mono())
+                .width(Length::FillPortion(PeerCategory::Window.width_portion())),
+        )
+        .push(
+            text(peer.remote_addr.as_str())
+                .font(cosmic::font::mono())
+                .width(Length::FillPortion(PeerCategory::Remote.width_portion())),
+        )
+        .push(
+            text(util::humanize_duration(
+                now.signed_duration_since(peer.connected_at),
+            ))
+            .font(cosmic::font::mono())
+            .width(Length::FillPortion(PeerCategory::Attached.width_portion())),
+        )
+        .spacing(12)
+        .align_y(Alignment::Center)
+        .into()
 }
 
 fn actions_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Message> {

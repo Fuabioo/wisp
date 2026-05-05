@@ -75,10 +75,18 @@ func NewDaemon() *Daemon {
 	}
 }
 
-func (d *Daemon) StartServer(req *int, res *ServerInfo) error {
+// StartServerReq carries the spawn parameters for a new wisp session.
+// Shell is optional — empty string falls back to the daemon's $SHELL
+// detection (zsh if unset).
+type StartServerReq struct {
+	Port  int
+	Shell string
+}
+
+func (d *Daemon) StartServer(req *StartServerReq, res *ServerInfo) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	port := *req
+	port := req.Port
 	for _, sess := range d.servers {
 		if sess.Info.Port == port {
 			return fmt.Errorf("server already running on port %d", port)
@@ -86,7 +94,7 @@ func (d *Daemon) StartServer(req *int, res *ServerInfo) error {
 	}
 
 	id := uuid.New().String()[:8]
-	pm, err := NewPTYManager(func() {
+	pm, err := NewPTYManager(req.Shell, func() {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		if sess, exists := d.servers[id]; exists {

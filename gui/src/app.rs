@@ -4,23 +4,13 @@ use std::time::Duration;
 
 use cosmic::app::{Core, Task};
 use cosmic::iced::{event, window, Length, Subscription};
-use cosmic::widget::table::model::Entity;
-use cosmic::widget::table::SingleSelectModel;
 use cosmic::widget::{button, container, text, Column, Row};
 use cosmic::Element;
 
 use crate::backend::{CliBackend, PeerInfo, ServerInfo, WispBackend};
-use crate::components::peers_table::{PeerCategory, PeerItem, COLUMN_ORDER};
+use crate::components::peers_table::PeerCategory;
+use crate::settings::Settings;
 use crate::theme;
-
-/// Per-session table state. The model itself owns the row data; the side
-/// map lets us resolve `Entity` (slotmap keys) back to wisp's stable
-/// `client_id` strings, since cosmic's table click handlers report
-/// `Entity` and we need `client_id` to send `Daemon.KickPeer`.
-pub struct PeerModel {
-    pub model: SingleSelectModel<PeerItem, PeerCategory>,
-    pub entity_to_client: HashMap<Entity, String>,
-}
 
 pub struct WispAdmin {
     core: Core,
@@ -29,7 +19,10 @@ pub struct WispAdmin {
     pub sessions: Vec<ServerInfo>,
     pub selected: Option<String>,
     pub peers: HashMap<String, Vec<PeerInfo>>,
-    pub peer_models: HashMap<String, PeerModel>,
+    /// Per-session sort preference: (column, ascending).
+    pub peer_sorts: HashMap<String, (PeerCategory, bool)>,
+    /// Per-session selected client_id (the row that's highlighted).
+    pub selected_peers: HashMap<String, String>,
     pub daemon_reachable: bool,
     pub daemon_started_at: Option<chrono::DateTime<chrono::Utc>>,
     pub spawn_drawer: SpawnDrawerState,
@@ -38,6 +31,8 @@ pub struct WispAdmin {
     pub event_tape: Vec<EventEntry>,
     pub window_focused: bool,
     pub anim_phase: f32,
+    pub settings: Settings,
+    pub settings_draft: Settings,
 }
 
 /// Master cycle for the ghost shimmer — chosen to match the longest SMIL
@@ -51,6 +46,7 @@ const ANIM_TICK_MS: u64 = 50;
 pub enum Page {
     Fleet,
     Daemon,
+    Settings,
     About,
 }
 
@@ -102,13 +98,19 @@ pub enum Message {
     ConfirmKill(String),
     SessionActionDone(SessionAction, String, Result<(), String>),
 
-    SelectPeer(String, Entity),
+    SelectPeer(String, String),
     SortPeers(String, PeerCategory),
     KickPeer(String, String),
     KickDone(String, String, Result<(), String>),
 
     RefreshSession(String),
     RefreshDone(String, Result<(), String>),
+
+    SettingsShellChanged(String),
+    SettingsHostChanged(String),
+    SaveSettings,
+    RevertSettings,
+    ResetSettings,
 
     DismissError,
 }
@@ -144,6 +146,12 @@ impl cosmic::Application for WispAdmin {
     fn init(core: Core, _flags: Self::Flags) -> (Self, Task<Self::Message>) {
         tracing::info!(app_id = Self::APP_ID, "WispAdmin init");
         let backend: Arc<dyn WispBackend> = Arc::new(CliBackend::new());
+        let settings = Settings::load();
+        tracing::info!(
+            shell = %settings.default_shell,
+            host = %settings.connect_host,
+            "settings loaded"
+        );
         let app = WispAdmin {
             core,
             backend: backend.clone(),
@@ -151,7 +159,8 @@ impl cosmic::Application for WispAdmin {
             sessions: Vec::new(),
             selected: None,
             peers: HashMap::new(),
-            peer_models: HashMap::new(),
+            peer_sorts: HashMap::new(),
+            selected_peers: HashMap::new(),
             daemon_reachable: false,
             daemon_started_at: None,
             spawn_drawer: SpawnDrawerState::default(),
@@ -160,6 +169,8 @@ impl cosmic::Application for WispAdmin {
             event_tape: Vec::with_capacity(200),
             window_focused: true,
             anim_phase: 0.0,
+            settings_draft: settings.clone(),
+            settings,
         };
 
         let initial_load = Task::perform(
@@ -253,20 +264,12 @@ impl cosmic::Application for WispAdmin {
                     }
                 }
 
-                let mut model: SingleSelectModel<PeerItem, PeerCategory> =
-                    SingleSelectModel::new(COLUMN_ORDER.to_vec());
-                let mut entity_to_client: HashMap<Entity, String> = HashMap::new();
-                for peer in &peers {
-                    let entity = model.insert(PeerItem::from_info(peer)).id();
-                    entity_to_client.insert(entity, peer.client_id.clone());
+                // Drop any selection that no longer references a live peer.
+                if let Some(selected) = self.selected_peers.get(&id)
+                    && !peers.iter().any(|p| &p.client_id == selected)
+                {
+                    self.selected_peers.remove(&id);
                 }
-                self.peer_models.insert(
-                    id.clone(),
-                    PeerModel {
-                        model,
-                        entity_to_client,
-                    },
-                );
                 self.peers.insert(id, peers);
 
                 for (kind, msg) in events {
@@ -302,8 +305,14 @@ impl cosmic::Application for WispAdmin {
                     return Task::none();
                 };
                 let backend = self.backend.clone();
+                let shell = self.settings.default_shell.clone();
                 Task::perform(
-                    async move { backend.start_server(port).await.map_err(|e| e.to_string()) },
+                    async move {
+                        backend
+                            .start_server(port, &shell)
+                            .await
+                            .map_err(|e| e.to_string())
+                    },
                     |r| act(Message::SpawnDone(r)),
                 )
             }
@@ -348,7 +357,8 @@ impl cosmic::Application for WispAdmin {
                 if matches!(action, SessionAction::Kill) {
                     self.sessions.retain(|s| s.id != id);
                     self.peers.remove(&id);
-                    self.peer_models.remove(&id);
+                    self.peer_sorts.remove(&id);
+                    self.selected_peers.remove(&id);
                     if self.selected.as_ref() == Some(&id) {
                         self.selected = self.sessions.first().map(|s| s.id.clone());
                     }
@@ -359,20 +369,20 @@ impl cosmic::Application for WispAdmin {
                 self.record_error(err);
                 Task::none()
             }
-            Message::SelectPeer(session_id, entity) => {
-                if let Some(pm) = self.peer_models.get_mut(&session_id) {
-                    pm.model.activate(entity);
+            Message::SelectPeer(session_id, client_id) => {
+                if self.selected_peers.get(&session_id) == Some(&client_id) {
+                    self.selected_peers.remove(&session_id);
+                } else {
+                    self.selected_peers.insert(session_id, client_id);
                 }
                 Task::none()
             }
             Message::SortPeers(session_id, category) => {
-                if let Some(pm) = self.peer_models.get_mut(&session_id) {
-                    let ascending = match pm.model.get_sort() {
-                        Some((c, asc)) if c == category => !asc,
-                        _ => true,
-                    };
-                    pm.model.sort(category, ascending);
-                }
+                let next = match self.peer_sorts.get(&session_id) {
+                    Some((c, asc)) if *c == category => (category, !*asc),
+                    _ => (category, true),
+                };
+                self.peer_sorts.insert(session_id, next);
                 Task::none()
             }
             Message::KickPeer(session_id, client_id) => {
@@ -420,6 +430,30 @@ impl cosmic::Application for WispAdmin {
                 self.record_error(err);
                 Task::none()
             }
+            Message::SettingsShellChanged(shell) => {
+                self.settings_draft.default_shell = shell;
+                Task::none()
+            }
+            Message::SettingsHostChanged(host) => {
+                self.settings_draft.connect_host = host;
+                Task::none()
+            }
+            Message::SaveSettings => {
+                if let Err(err) = self.settings_draft.save() {
+                    self.record_error(format!("could not save settings: {}", err));
+                } else {
+                    self.settings = self.settings_draft.clone();
+                }
+                Task::none()
+            }
+            Message::RevertSettings => {
+                self.settings_draft = self.settings.clone();
+                Task::none()
+            }
+            Message::ResetSettings => {
+                self.settings_draft = Settings::default();
+                Task::none()
+            }
             Message::DismissError => {
                 self.last_error = None;
                 Task::none()
@@ -431,6 +465,7 @@ impl cosmic::Application for WispAdmin {
         let body: Element<'_, Self::Message> = match self.page {
             Page::Fleet => crate::pages::fleet::view(self),
             Page::Daemon => crate::pages::daemon::view(self),
+            Page::Settings => crate::pages::settings::view(self),
             Page::About => crate::pages::about::view(self),
         };
 
@@ -490,6 +525,7 @@ impl WispAdmin {
             Row::new()
                 .push(tab("Fleet", Page::Fleet))
                 .push(tab("Daemon", Page::Daemon))
+                .push(tab("Settings", Page::Settings))
                 .push(tab("About", Page::About))
                 .spacing(8)
                 .padding(12),
@@ -599,9 +635,4 @@ impl WispAdmin {
         self.peers.get(session_id).map(|p| p.len()).unwrap_or(0)
     }
 
-    pub fn selected_peer_client_id(&self, session_id: &str) -> Option<String> {
-        let pm = self.peer_models.get(session_id)?;
-        let entity = pm.model.iter().find(|e| pm.model.is_active(*e))?;
-        pm.entity_to_client.get(&entity).cloned()
-    }
 }

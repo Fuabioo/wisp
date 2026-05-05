@@ -14,6 +14,7 @@ var serverCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		jsonGuard(cmd)
 		port, _ := cmd.Flags().GetInt("port")
+		shell, _ := cmd.Flags().GetString("shell")
 
 		client, err := dialDaemon()
 		if err != nil {
@@ -22,7 +23,8 @@ var serverCmd = &cobra.Command{
 		defer client.Close()
 
 		var res core.ServerInfo
-		if err := client.Call("Daemon.StartServer", &port, &res); err != nil {
+		req := core.StartServerReq{Port: port, Shell: shell}
+		if err := client.Call("Daemon.StartServer", &req, &res); err != nil {
 			return emitFailure(cmd, err)
 		}
 
@@ -35,5 +37,6 @@ var serverCmd = &cobra.Command{
 
 func init() {
 	serverCmd.Flags().IntP("port", "p", 2222, "Port to listen on")
+	serverCmd.Flags().StringP("shell", "s", "", "Shell binary (defaults to $SHELL, then zsh)")
 	rootCmd.AddCommand(serverCmd)
 }

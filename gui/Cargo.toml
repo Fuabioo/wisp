@@ -23,6 +23,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "ti
 # Backend types ↔ Go's encoding/json over the --json CLI surface.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 
 # dyn-dispatch async traits (needed because we own `Arc<dyn WispBackend>`

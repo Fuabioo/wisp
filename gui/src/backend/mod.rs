@@ -65,7 +65,7 @@ pub struct PeerInfo {
 pub trait WispBackend: Send + Sync {
     async fn list_servers(&self) -> anyhow::Result<Vec<ServerInfo>>;
     async fn list_peers(&self, session_id: &str) -> anyhow::Result<Vec<PeerInfo>>;
-    async fn start_server(&self, port: u16) -> anyhow::Result<ServerInfo>;
+    async fn start_server(&self, port: u16, shell: &str) -> anyhow::Result<ServerInfo>;
     async fn up(&self, session_id: &str) -> anyhow::Result<()>;
     async fn down(&self, session_id: &str) -> anyhow::Result<()>;
     async fn kill(&self, session_id: &str) -> anyhow::Result<()>;

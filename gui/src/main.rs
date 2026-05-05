@@ -6,6 +6,7 @@ mod app;
 mod backend;
 mod components;
 mod pages;
+mod settings;
 mod subscriptions;
 mod theme;
 

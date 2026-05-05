@@ -29,7 +29,7 @@ impl WispBackend for JsonRpcBackend {
     async fn list_peers(&self, _session_id: &str) -> Result<Vec<PeerInfo>> {
         bail!("JsonRpcBackend not implemented (phase 2 — see ADR 0002)")
     }
-    async fn start_server(&self, _port: u16) -> Result<ServerInfo> {
+    async fn start_server(&self, _port: u16, _shell: &str) -> Result<ServerInfo> {
         bail!("JsonRpcBackend not implemented (phase 2 — see ADR 0002)")
     }
     async fn up(&self, _session_id: &str) -> Result<()> {

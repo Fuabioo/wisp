@@ -114,8 +114,10 @@ func (c chanReader) Read(p []byte) (n int, err error) {
 	}
 }
 
-func NewPTYManager(onClose func()) (*PTYManager, error) {
-	shell := os.Getenv("SHELL")
+func NewPTYManager(shell string, onClose func()) (*PTYManager, error) {
+	if shell == "" {
+		shell = os.Getenv("SHELL")
+	}
 	if shell == "" {
 		shell = "zsh"
 	}
