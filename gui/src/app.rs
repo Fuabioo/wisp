@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use cosmic::app::{Core, Task};
 use cosmic::iced::{event, keyboard, window, Length, Subscription};
-use cosmic::widget::{button, container, nav_bar, popover, text, Column, Row};
+use cosmic::widget::{button, container, mouse_area, nav_bar, popover, text, Column, Row};
 use cosmic::Element;
 
 use crate::backend::{CliBackend, PeerInfo, ServerInfo, WispBackend};
@@ -624,19 +624,24 @@ impl cosmic::Application for WispAdmin {
             layout = layout.push(banner);
         }
 
-        let main: Element<'_, Self::Message> = layout
+        let main_inner: Element<'_, Self::Message> = layout
             .push(container(body).width(Length::Fill).height(Length::Fill))
             .spacing(0)
             .width(Length::Fill)
             .height(Length::Fill)
             .into();
 
-        // Hamburger menu trigger lives in the daemon ribbon. When
-        // `menu_open` is true the popover overlays a small panel of nav
-        // shortcuts on top of the body — useful when decorations are
-        // hidden and the sidebar toggle is unreachable. modal(true)
-        // captures clicks outside the popup so we can dismiss via
-        // on_close — without modal the popup wasn't visibly rendering.
+        // Right-click anywhere → also open the menu (alongside the
+        // hamburger trigger in the daemon ribbon). mouse_area only fires
+        // on_right_press for clicks that aren't intercepted by inner
+        // widgets — buttons / inputs swallow theirs, but right-clicking
+        // a session row, table row, empty space, etc. routes here.
+        let main: Element<'_, Self::Message> =
+            mouse_area(main_inner).on_right_press(Message::OpenMenu).into();
+
+        // modal(true) puts the popup on the dialog overlay layer so it
+        // actually renders — without it the popup was attached but
+        // invisible. Click-outside dismisses via on_close.
         let mut pop = popover(main).modal(true);
         if self.menu_open {
             pop = pop.popup(self.menu_popup()).on_close(Message::CloseMenu);
@@ -694,12 +699,11 @@ impl WispAdmin {
         }
     }
 
-    /// Dropdown panel shown by the hamburger button in the daemon
-    /// ribbon. Each entry closes the menu after acting so a single click
-    /// both navigates and dismisses. Position is centred over the body
-    /// because cosmic's popover only exposes Center / Bottom / fixed
-    /// Point — we trade cursor anchoring for a predictable, always-
-    /// reachable panel.
+    /// Dropdown panel shown by the hamburger button or right-click. Each
+    /// entry closes the menu after acting so a single click both
+    /// navigates and dismisses. Uses `Container::Dialog` so cosmic
+    /// renders a proper opaque overlay (Card class was inheriting a
+    /// transparent background on the user's theme).
     fn menu_popup(&self) -> Element<'_, Message> {
         let item = |label: &'static str, msg: Message| -> Element<'_, Message> {
             button::standard(label)
@@ -709,6 +713,7 @@ impl WispAdmin {
         };
         container(
             Column::new()
+                .push(text("Menu").size(18))
                 .push(item("Go to Fleet", Message::NavigateTo(Page::Fleet)))
                 .push(item("Go to Daemon", Message::NavigateTo(Page::Daemon)))
                 .push(item("Go to Settings", Message::NavigateTo(Page::Settings)))
@@ -718,11 +723,11 @@ impl WispAdmin {
                     Message::ToggleSidebar,
                 ))
                 .push(item("Close menu", Message::CloseMenu))
-                .spacing(4)
-                .padding(12)
-                .max_width(280.0),
+                .spacing(6)
+                .padding(16)
+                .width(Length::Fixed(280.0)),
         )
-        .class(cosmic::style::Container::Card)
+        .class(cosmic::style::Container::Dialog)
         .into()
     }
 
