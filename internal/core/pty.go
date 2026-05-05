@@ -15,6 +15,16 @@ import (
 	"github.com/creack/pty"
 )
 
+// tailCapacity caps the per-session scrollback ring buffer used by GetTail.
+// ~64 KiB ≈ 8 full screens of 80×25, enough for a TUI snapshot + a bit of
+// history without bloating daemon memory across many sessions.
+const tailCapacity = 64 * 1024
+
+// refreshDelay sits between the +1 and -1 PTY resizes done by RefreshAll;
+// gives the foreground process a chance to handle SIGWINCH on the bumped
+// size before it springs back to the original.
+const refreshDelay = 30 * time.Millisecond
+
 type peerEntry struct {
 	ClientID    string
 	Window      ssh.Window
@@ -32,6 +42,36 @@ type PeerInfo struct {
 	ConnectedAt time.Time
 }
 
+// tailBuffer is a tail-only ring buffer; old data falls off the front when
+// new bytes push past `capacity`. Concurrent writers/snapshot readers are
+// serialised through `mu`.
+type tailBuffer struct {
+	mu       sync.Mutex
+	data     []byte
+	capacity int
+}
+
+func newTailBuffer(capacity int) *tailBuffer {
+	return &tailBuffer{capacity: capacity, data: make([]byte, 0, capacity)}
+}
+
+func (tb *tailBuffer) write(p []byte) {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+	tb.data = append(tb.data, p...)
+	if len(tb.data) > tb.capacity {
+		excess := len(tb.data) - tb.capacity
+		copy(tb.data, tb.data[excess:])
+		tb.data = tb.data[:tb.capacity]
+	}
+}
+
+func (tb *tailBuffer) snapshot() string {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+	return string(tb.data)
+}
+
 type PTYManager struct {
 	file     *os.File
 	cmd      *exec.Cmd
@@ -40,6 +80,7 @@ type PTYManager struct {
 	onClose  func()
 	lastRows uint16
 	lastCols uint16
+	tail     *tailBuffer
 }
 
 type chanReader struct {
@@ -89,6 +130,7 @@ func NewPTYManager(onClose func()) (*PTYManager, error) {
 		cmd:     c,
 		socks:   make(map[ssh.Session]peerEntry),
 		onClose: onClose,
+		tail:    newTailBuffer(tailCapacity),
 	}
 
 	go pm.broadcast()
@@ -115,6 +157,10 @@ func (pm *PTYManager) broadcast() {
 			log.Printf("Failed to read from pty: %v", err)
 			return
 		}
+
+		// Capture for `wisp tail` / GUI console preview before fan-out so
+		// dead-client cleanup on write failure can't race the buffer.
+		pm.tail.write(buf[:n])
 
 		pm.mu.Lock()
 		sessions := make([]ssh.Session, 0, len(pm.socks))
@@ -187,6 +233,29 @@ func (pm *PTYManager) Peers() []PeerInfo {
 		return out[i].ClientID < out[j].ClientID
 	})
 	return out
+}
+
+// Tail returns a copy of the recent PTY output (capped at tailCapacity
+// bytes). Safe to call from any goroutine.
+func (pm *PTYManager) Tail() string {
+	return pm.tail.snapshot()
+}
+
+// RefreshAll perturbs the PTY size by +1 then back to the original to
+// generate a SIGWINCH on the foreground process. TUIs like claude-code
+// repaint their full UI on resize, so this gives a peer who attached
+// mid-session a fresh paint without anyone disconnecting.
+func (pm *PTYManager) RefreshAll() {
+	pm.mu.Lock()
+	rows := pm.lastRows
+	cols := pm.lastCols
+	pm.mu.Unlock()
+	if rows == 0 || cols == 0 {
+		return
+	}
+	_ = pty.Setsize(pm.file, &pty.Winsize{Rows: rows + 1, Cols: cols + 1})
+	time.Sleep(refreshDelay)
+	_ = pty.Setsize(pm.file, &pty.Winsize{Rows: rows, Cols: cols})
 }
 
 // Kick closes the SSH session belonging to the given clientID. Returns true

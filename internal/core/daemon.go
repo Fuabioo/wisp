@@ -278,3 +278,44 @@ func (d *Daemon) KickPeer(req *KickReq, res *bool) error {
 	}
 	return nil
 }
+
+// RefreshReq identifies a session whose PTY should be poked with a
+// no-op size change to provoke a TUI repaint.
+type RefreshReq struct {
+	SessionID string
+}
+
+// RefreshSession nudges the PTY size by +1 and back to coax full-screen
+// TUIs into repainting. Useful when a peer attached mid-session and never
+// got the initial paint.
+func (d *Daemon) RefreshSession(req *RefreshReq, res *bool) error {
+	d.mu.Lock()
+	sess, exists := d.servers[req.SessionID]
+	d.mu.Unlock()
+	if !exists {
+		return fmt.Errorf("session %s not found", req.SessionID)
+	}
+	sess.PTY.RefreshAll()
+	*res = true
+	return nil
+}
+
+// TailReq identifies a session whose recent PTY output should be returned.
+type TailReq struct {
+	SessionID string
+}
+
+// GetTail returns up to ~64 KiB of recent PTY output, useful for a
+// preview pane in the GUI or `wisp tail` for shell-driven monitoring.
+// The string contains raw bytes including ANSI escape sequences; consumers
+// that need a rendered TUI should run them through a terminal emulator.
+func (d *Daemon) GetTail(req *TailReq, res *string) error {
+	d.mu.Lock()
+	sess, exists := d.servers[req.SessionID]
+	d.mu.Unlock()
+	if !exists {
+		return fmt.Errorf("session %s not found", req.SessionID)
+	}
+	*res = sess.PTY.Tail()
+	return nil
+}
