@@ -8,6 +8,7 @@ use cosmic::widget::{button, container, text, Column, Row};
 use cosmic::Element;
 
 use crate::backend::{CliBackend, PeerInfo, ServerInfo, WispBackend};
+use crate::theme;
 
 pub struct WispAdmin {
     core: Core,
@@ -413,7 +414,7 @@ impl WispAdmin {
                     .spacing(12)
                     .padding(12),
             )
-            .class(cosmic::style::Container::Card)
+            .style(theme::error_banner_style)
             .width(Length::Fill)
             .into(),
         )

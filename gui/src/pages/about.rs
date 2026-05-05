@@ -12,7 +12,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub fn view<'a>(_app: &'a WispAdmin) -> Element<'a, Message> {
     container(
         Column::new()
-            .push(ghost_art::view::<Message>())
+            .push(ghost_art::view::<Message>(160.0))
             .push(text("wisp-admin").size(28).font(cosmic::font::mono()))
             .push(text(format!("v{}", VERSION)).font(cosmic::font::mono()))
             .push(text(""))

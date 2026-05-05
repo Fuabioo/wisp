@@ -1,18 +1,16 @@
-// Pixel ghost — the brand leitmotif. Single source of truth is
-// `internal/core/pet.txt` (see ADR 0002). We `include_str!` it directly so
-// the GUI binary stays in sync with the daemon's MOTD ghost.
+// Pixel ghost — the brand leitmotif. Loads `assets/logo-wisp.svg` directly
+// so the GUI's chrome stays anchored to the canonical wisp logo (see ADR
+// 0002's brand-DNA contract).
 
-use cosmic::widget::{container, text, Column};
+use cosmic::iced::Length;
+use cosmic::widget::svg::{self, Svg};
 use cosmic::Element;
 
-pub const GHOST_ART: &str = include_str!("../../../internal/core/pet.txt");
+const LOGO_BYTES: &[u8] = include_bytes!("../../../assets/logo-wisp.svg");
 
-pub fn view<'a, Message: 'a>() -> Element<'a, Message> {
-    container(
-        Column::new()
-            .push(text(GHOST_ART).font(cosmic::font::mono()).size(14))
-            .spacing(2),
-    )
-    .padding(12)
-    .into()
+pub fn view<'a, Message: 'a>(size: f32) -> Element<'a, Message> {
+    Svg::new(svg::Handle::from_memory(LOGO_BYTES))
+        .width(Length::Fixed(size))
+        .height(Length::Fixed(size))
+        .into()
 }

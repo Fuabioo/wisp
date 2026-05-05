@@ -4,9 +4,14 @@ use cosmic::Element;
 
 use crate::app::{Message, WispAdmin};
 use crate::components::util;
+use crate::theme;
 
 pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
-    let heartbeat = if app.daemon_reachable { "● " } else { "○ " };
+    let dot_color = if app.daemon_reachable {
+        theme::ALIVE
+    } else {
+        theme::DANGER
+    };
     let status = if app.daemon_reachable {
         "daemon · reachable"
     } else {
@@ -29,14 +34,14 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
 
     container(
         Row::new()
-            .push(text(heartbeat))
-            .push(text(status))
+            .push(text("●").class(dot_color))
+            .push(text(format!(" {}", status)))
             .push(text("  ·  "))
             .push(text(stats).font(cosmic::font::mono()))
             .spacing(0)
             .padding(8),
     )
-    .class(cosmic::style::Container::Background)
+    .style(theme::ribbon_style)
     .width(Length::Fill)
     .into()
 }

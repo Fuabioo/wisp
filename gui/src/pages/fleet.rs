@@ -9,6 +9,7 @@ use cosmic::Element;
 use crate::app::{Message, WispAdmin};
 use crate::backend::ServerInfo;
 use crate::components::{event_tape, ghost_art, peer_row, session_orb};
+use crate::theme;
 
 pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
     let rail = rail_view(app);
@@ -88,7 +89,7 @@ fn spine_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
 
 fn header_view<'a>(session: &'a ServerInfo) -> Element<'a, Message> {
     Column::new()
-        .push(ghost_art::view::<Message>())
+        .push(ghost_art::view::<Message>(96.0))
         .push(
             text(format!("session · {}", session.short_id()))
                 .size(20)
@@ -98,7 +99,10 @@ fn header_view<'a>(session: &'a ServerInfo) -> Element<'a, Message> {
             Row::new()
                 .push(text(format!("port :{}", session.port)).font(cosmic::font::mono()))
                 .push(text("  ·  "))
-                .push(text(session.status.label()))
+                .push(
+                    text(session.status.label())
+                        .class(theme::status_color(session.is_active())),
+                )
                 .spacing(0),
         )
         .spacing(6)
@@ -201,7 +205,7 @@ fn spawn_drawer_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
 fn empty_state_view<'a>() -> Element<'a, Message> {
     container(
         Column::new()
-            .push(ghost_art::view::<Message>())
+            .push(ghost_art::view::<Message>(200.0))
             .push(text("No wisps yet.").size(20))
             .push(text("Summon your first session to begin."))
             .push(button::suggested("+ spawn session").on_press(Message::OpenSpawnDrawer))
