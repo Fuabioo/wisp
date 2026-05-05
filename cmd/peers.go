@@ -16,15 +16,23 @@ var peersCmd = &cobra.Command{
 	Short: "List clients attached to a Wisp session",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		jsonGuard(cmd)
 		client, err := dialDaemon()
 		if err != nil {
-			return err
+			return emitFailure(cmd, err)
 		}
 		defer client.Close()
 
 		var res []core.PeerInfo
 		if err := client.Call("Daemon.ListPeers", &core.PeersReq{SessionID: args[0]}, &res); err != nil {
-			return err
+			return emitFailure(cmd, err)
+		}
+
+		if jsonOutput {
+			if res == nil {
+				res = []core.PeerInfo{}
+			}
+			return emitJSON(cmd, res)
 		}
 
 		if len(res) == 0 {

@@ -13,19 +13,22 @@ var kickCmd = &cobra.Command{
 	Short: "Disconnect a single client from a Wisp session",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		jsonGuard(cmd)
 		client, err := dialDaemon()
 		if err != nil {
-			return err
+			return emitFailure(cmd, err)
 		}
 		defer client.Close()
 
 		var res bool
 		req := core.KickReq{SessionID: args[0], ClientID: args[1]}
 		if err := client.Call("Daemon.KickPeer", &req, &res); err != nil {
-			return err
+			return emitFailure(cmd, err)
 		}
-		cmd.Println(successStyle.Render(fmt.Sprintf("👢 Kicked %s from session %s", args[1], args[0])))
-		return nil
+
+		return emitSuccess(cmd,
+			jsonResult{ID: args[0]},
+			successStyle.Render(fmt.Sprintf("👢 Kicked %s from session %s", args[1], args[0])))
 	},
 }
 

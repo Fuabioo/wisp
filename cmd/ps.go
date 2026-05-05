@@ -14,15 +14,23 @@ var psCmd = &cobra.Command{
 	Use:   "ps",
 	Short: "List running Wisp servers",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		jsonGuard(cmd)
 		client, err := dialDaemon()
 		if err != nil {
-			return err
+			return emitFailure(cmd, err)
 		}
 		defer client.Close()
 
 		var res []core.ServerInfo
 		if err := client.Call("Daemon.ListServers", 0, &res); err != nil {
-			return err
+			return emitFailure(cmd, err)
+		}
+
+		if jsonOutput {
+			if res == nil {
+				res = []core.ServerInfo{}
+			}
+			return emitJSON(cmd, res)
 		}
 
 		if len(res) == 0 {

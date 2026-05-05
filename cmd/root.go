@@ -46,6 +46,7 @@ func defaultSocketPath() string {
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&socketPath, "socket", defaultSocketPath(), "Path to the wisp daemon Unix socket")
+	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Emit machine-readable JSON instead of styled output")
 }
 
 func dialDaemon() (*rpc.Client, error) {
