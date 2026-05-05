@@ -17,6 +17,7 @@ pub struct WispAdmin {
     pub sessions: Vec<ServerInfo>,
     pub selected: Option<String>,
     pub peers: HashMap<String, Vec<PeerInfo>>,
+    pub tails: HashMap<String, String>,
     pub daemon_reachable: bool,
     pub daemon_started_at: Option<chrono::DateTime<chrono::Utc>>,
     pub spawn_drawer: SpawnDrawerState,
@@ -75,6 +76,7 @@ pub enum Message {
 
     SessionsLoaded(Result<Vec<ServerInfo>, String>),
     PeersLoaded(String, Result<Vec<PeerInfo>, String>),
+    TailLoaded(String, Result<String, String>),
 
     OpenSpawnDrawer,
     CloseSpawnDrawer,
@@ -91,6 +93,9 @@ pub enum Message {
 
     KickPeer(String, String),
     KickDone(String, String, Result<(), String>),
+
+    RefreshSession(String),
+    RefreshDone(String, Result<(), String>),
 
     DismissError,
 }
@@ -133,6 +138,7 @@ impl cosmic::Application for WispAdmin {
             sessions: Vec::new(),
             selected: None,
             peers: HashMap::new(),
+            tails: HashMap::new(),
             daemon_reachable: false,
             daemon_started_at: None,
             spawn_drawer: SpawnDrawerState::default(),
@@ -183,7 +189,7 @@ impl cosmic::Application for WispAdmin {
             }
             Message::SelectSession(id) => {
                 self.selected = Some(id.clone());
-                self.refresh_peers(id)
+                Task::batch([self.refresh_peers(id.clone()), self.fetch_tail(id)])
             }
             Message::SessionsLoaded(Ok(sessions)) => {
                 self.daemon_reachable = true;
@@ -199,7 +205,7 @@ impl cosmic::Application for WispAdmin {
                     self.selected = self.sessions.first().map(|s| s.id.clone());
                 }
                 if let Some(id) = self.selected.clone() {
-                    self.refresh_peers(id)
+                    Task::batch([self.refresh_peers(id.clone()), self.fetch_tail(id)])
                 } else {
                     Task::none()
                 }
@@ -243,6 +249,17 @@ impl cosmic::Application for WispAdmin {
                 self.record_error(err);
                 Task::none()
             }
+            Message::TailLoaded(id, Ok(tail)) => {
+                if self.tails.get(&id).map(|t| t == &tail).unwrap_or(false) {
+                    return Task::none();
+                }
+                self.tails.insert(id, tail);
+                Task::none()
+            }
+            Message::TailLoaded(_, Err(err)) => {
+                tracing::debug!(%err, "tail fetch failed");
+                Task::none()
+            }
             Message::OpenSpawnDrawer => {
                 self.spawn_drawer.open = true;
                 if self.spawn_drawer.port_input.is_empty() {
@@ -282,7 +299,7 @@ impl cosmic::Application for WispAdmin {
                 );
                 self.sessions.push(info);
                 self.selected = Some(id.clone());
-                self.refresh_peers(id)
+                Task::batch([self.refresh_peers(id.clone()), self.fetch_tail(id)])
             }
             Message::SpawnDone(Err(err)) => {
                 self.record_error(err);
@@ -313,6 +330,7 @@ impl cosmic::Application for WispAdmin {
                 if matches!(action, SessionAction::Kill) {
                     self.sessions.retain(|s| s.id != id);
                     self.peers.remove(&id);
+                    self.tails.remove(&id);
                     if self.selected.as_ref() == Some(&id) {
                         self.selected = self.sessions.first().map(|s| s.id.clone());
                     }
@@ -340,6 +358,35 @@ impl cosmic::Application for WispAdmin {
                 self.refresh_peers(session_id)
             }
             Message::KickDone(_, _, Err(err)) => {
+                self.record_error(err);
+                Task::none()
+            }
+            Message::RefreshSession(session_id) => {
+                let backend = self.backend.clone();
+                let id_for_call = session_id.clone();
+                Task::perform(
+                    async move {
+                        backend
+                            .refresh(&id_for_call)
+                            .await
+                            .map_err(|e| e.to_string())
+                    },
+                    move |r| act(Message::RefreshDone(session_id.clone(), r)),
+                )
+            }
+            Message::RefreshDone(session_id, Ok(())) => {
+                let short = session_id[..session_id.len().min(8)].to_string();
+                self.event_tape_push(
+                    EventKind::Spawn,
+                    format!("refreshed TUI for {}", short),
+                );
+                // The PTY perturbation often produces a fresh paint within
+                // a few hundred ms; queue an extra tail fetch so the GUI's
+                // console pane (if open) catches it without waiting on the
+                // 1Hz tick.
+                self.fetch_tail(session_id)
+            }
+            Message::RefreshDone(_, Err(err)) => {
                 self.record_error(err);
                 Task::none()
             }
@@ -445,19 +492,11 @@ impl WispAdmin {
         );
 
         if let Some(id) = self.selected.clone() {
-            let backend = self.backend.clone();
-            let id_for_call = id.clone();
-            let id_for_callback = id;
-            let peers_task = Task::perform(
-                async move {
-                    backend
-                        .list_peers(&id_for_call)
-                        .await
-                        .map_err(|e| e.to_string())
-                },
-                move |r| act(Message::PeersLoaded(id_for_callback.clone(), r)),
-            );
-            Task::batch([sessions_task, peers_task])
+            Task::batch([
+                sessions_task,
+                self.refresh_peers(id.clone()),
+                self.fetch_tail(id),
+            ])
         } else {
             sessions_task
         }
@@ -474,6 +513,20 @@ impl WispAdmin {
                     .map_err(|e| e.to_string())
             },
             move |r| act(Message::PeersLoaded(id.clone(), r)),
+        )
+    }
+
+    fn fetch_tail(&self, id: String) -> Task<Message> {
+        let backend = self.backend.clone();
+        let id_for_call = id.clone();
+        Task::perform(
+            async move {
+                backend
+                    .get_tail(&id_for_call)
+                    .await
+                    .map_err(|e| e.to_string())
+            },
+            move |r| act(Message::TailLoaded(id.clone(), r)),
         )
     }
 

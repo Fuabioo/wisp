@@ -70,4 +70,6 @@ pub trait WispBackend: Send + Sync {
     async fn down(&self, session_id: &str) -> anyhow::Result<()>;
     async fn kill(&self, session_id: &str) -> anyhow::Result<()>;
     async fn kick(&self, session_id: &str, client_id: &str) -> anyhow::Result<()>;
+    async fn refresh(&self, session_id: &str) -> anyhow::Result<()>;
+    async fn get_tail(&self, session_id: &str) -> anyhow::Result<String>;
 }

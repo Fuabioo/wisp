@@ -27,6 +27,12 @@ struct ActionResult {
     error: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct TailEnvelope {
+    #[serde(default)]
+    tail: String,
+}
+
 impl CliBackend {
     pub fn new() -> Self {
         Self {
@@ -75,7 +81,11 @@ impl CliBackend {
             return Err(anyhow!(msg));
         }
 
-        let msg = if stderr.is_empty() { stdout } else { stderr };
+        let msg = if stderr.is_empty() {
+            stdout
+        } else {
+            stderr
+        };
         tracing::warn!(?args, status = %output.status, %msg, "wisp exited non-zero");
         Err(anyhow!("wisp exited with {}: {}", output.status, msg))
     }
@@ -159,5 +169,14 @@ impl WispBackend for CliBackend {
         self.exec_action(&["kick", session_id, client_id])
             .await
             .map(|_| ())
+    }
+
+    async fn refresh(&self, session_id: &str) -> Result<()> {
+        self.action_by_id("refresh", session_id).await
+    }
+
+    async fn get_tail(&self, session_id: &str) -> Result<String> {
+        let envelope = self.exec_json::<TailEnvelope>(&["tail", session_id]).await?;
+        Ok(envelope.tail)
     }
 }

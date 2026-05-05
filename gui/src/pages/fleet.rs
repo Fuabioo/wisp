@@ -8,8 +8,14 @@ use cosmic::Element;
 
 use crate::app::{Message, WispAdmin};
 use crate::backend::ServerInfo;
-use crate::components::{event_tape, ghost_art, peer_row, session_orb};
+use crate::components::{event_tape, ghost_art, peer_row, session_orb, util};
 use crate::theme;
+
+/// Cap the console preview so we don't hand iced an unbounded text node.
+/// 8 KiB ≈ 80×100 chars, generous for a quick-glance preview pane.
+const CONSOLE_VISIBLE_BYTES: usize = 8 * 1024;
+/// Height of the console pane in the detail spine.
+const CONSOLE_HEIGHT: f32 = 220.0;
 
 pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
     let rail = rail_view(app);
@@ -80,6 +86,7 @@ fn spine_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
         .push(header_view(session, app.anim_phase))
         .push(connect_view(session))
         .push(peers_view(app, session))
+        .push(console_view(app, session))
         .push(actions_view(app, session))
         .spacing(16)
         .width(Length::Fill)
@@ -149,6 +156,50 @@ fn peers_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Me
     }
 }
 
+fn console_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Message> {
+    let raw = app
+        .tails
+        .get(&session.id)
+        .map(String::as_str)
+        .unwrap_or_default();
+
+    let stripped = util::strip_ansi(raw);
+    let visible = if stripped.len() > CONSOLE_VISIBLE_BYTES {
+        // Tail-of-tail: keep the most recent slice. Walk backwards from the
+        // end to a char boundary so we don't slice mid-codepoint.
+        let cut = stripped.len().saturating_sub(CONSOLE_VISIBLE_BYTES);
+        let cut = (cut..=stripped.len())
+            .find(|i| stripped.is_char_boundary(*i))
+            .unwrap_or(cut);
+        stripped[cut..].to_string()
+    } else {
+        stripped
+    };
+
+    let body: Element<Message> = if visible.trim().is_empty() {
+        text("(no recent output)").into()
+    } else {
+        scrollable(
+            Column::new()
+                .push(text(visible).font(cosmic::font::mono()).size(11))
+                .padding(8),
+        )
+        .height(Length::Fixed(CONSOLE_HEIGHT))
+        .into()
+    };
+
+    container(
+        Column::new()
+            .push(text("console").size(14))
+            .push(body)
+            .spacing(4)
+            .padding(4),
+    )
+    .class(cosmic::style::Container::Card)
+    .width(Length::Fill)
+    .into()
+}
+
 fn actions_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Message> {
     if app.kill_confirm.as_ref() == Some(&session.id) {
         return Row::new()
@@ -156,6 +207,7 @@ fn actions_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, 
             .push(button::standard("cancel").on_press(Message::CancelKill))
             .push(button::destructive("kill").on_press(Message::ConfirmKill(session.id.clone())))
             .spacing(12)
+            .align_y(Alignment::Center)
             .into();
     }
 
@@ -171,8 +223,10 @@ fn actions_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, 
 
     Row::new()
         .push(toggle)
+        .push(button::standard("🔁 refresh").on_press(Message::RefreshSession(session.id.clone())))
         .push(button::destructive("kill").on_press(Message::AskKill(session.id.clone())))
         .spacing(12)
+        .align_y(Alignment::Center)
         .into()
 }
 

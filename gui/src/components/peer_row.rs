@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use cosmic::iced::Length;
+use cosmic::iced::{Alignment, Length};
 use cosmic::widget::{button, text, Row};
 use cosmic::Element;
 
@@ -39,5 +39,6 @@ pub fn view<'a>(session_id: &str, peer: &'a PeerInfo, now: DateTime<Utc>) -> Ele
         )
         .spacing(12)
         .padding(6)
+        .align_y(Alignment::Center)
         .into()
 }
