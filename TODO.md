@@ -41,6 +41,7 @@ The unexplored idea: **two or more AI agents attached to the exact same PTY**, c
 ## Recording / replay
 
 - [ ] **asciinema-format recording** of each session (`--record` flag, file per session id). Already on the Sessions list — kept here for cross-reference.
+- [ ] **Replay on attach** — when a client joins mid-session, dump the full asciicast byte stream into the terminal before switching to live mode. Terminal emulators converge to the correct visual state by processing all accumulated ANSI escapes, solving the "join a running TUI and see garbage" problem cleanly. Works with the existing ring buffer (64 KiB clip) or a full `.cast` file.
 - [ ] **Per-client recording** alongside the merged session recording, using the input-provenance work above.
 
 ## Interactive TUI
@@ -55,9 +56,9 @@ When `wisp` is invoked with no subcommand, drop into a bubbletea TUI exposing ev
 
 A user config file (e.g. `~/.config/wisp/config.toml`) read by the daemon at startup so Wisp is customizable without rebuilding.
 
-- [ ] Default shell (currently `$SHELL` → `zsh` fallback, hardcoded in `pty.go`)
+- [ ] Default shell in config file (`$SHELL` → `zsh` fallback in `pty.go`; per-session override exists via `wisp server --shell`, but no global config default yet)
 - [ ] Pause-menu trigger sequence and timeout window (currently `!>` with 250ms, hardcoded in `pty.go`)
-- [ ] Daemon socket path (currently `/tmp/wisp.sock` — would also be a security win to default to `$XDG_RUNTIME_DIR/wisp.sock`)
+- [ ] Daemon socket path in config file (already defaults to `$XDG_RUNTIME_DIR/wisp.sock` via `$WISP_SOCKET` / `--socket`, but not yet settable via config file)
 - [ ] Default port for `wisp server` (currently `2222`)
 - [ ] SSH host key location (currently `.ssh/term_info_<port>_ed25519` relative to daemon CWD)
 - [ ] PTY / broadcast buffer sizes
@@ -80,6 +81,7 @@ User-defined shell commands triggered by daemon events, similar to Claude Code's
 - [ ] **Lock session** — refuse new SSH connections until unlocked
 - [ ] **Kick peer** (owner only) — RPC + `wisp kick` CLI exist; pause-menu entry is gated on owner-vs-guest permissions
 - [ ] **Toggle read-only** — observe-only mode for the current client
+- [ ] **Status bar** — a subtle 1–2 row overlay at the bottom of each client showing session metadata (name/id, peer count, host, your client id). Helps orient users who shelled out and forgot they're inside a remote wisp session. Toggle on/off from the pause menu; disabled by default. Decouples from the PTY viewport (rows reserved from the SSH window, not written to the PTY).
 
 ## Sessions
 
@@ -98,7 +100,7 @@ User-defined shell commands triggered by daemon events, similar to Claude Code's
 ## Observability
 
 - [ ] Structured logs (`log/slog`) instead of stdlib `log`
-- [ ] `wisp logs <id>` — tail logs for a specific session via the daemon RPC
+- [x] `wisp logs <id>` — shipped as `wisp tail <id>` (64 KiB ring buffer, `Daemon.GetTail` RPC, `cmd/tail.go`)
 
 ## Code quality
 
@@ -107,3 +109,16 @@ User-defined shell commands triggered by daemon events, similar to Claude Code's
 - [ ] Replace `chanReader` byte-by-byte channel pipeline with a batched `bufio.Reader`-based fan-in. Same correctness, fewer allocations, batched PTY writes.
 - [x] `userCounts` is a lifetime counter that never decrements — clients get suffixes like `fabio-47` after enough churn. Should track currently-connected count.
 - [ ] Graceful daemon shutdown — current SIGTERM handler closes immediately; should send a goodbye banner and let in-flight writes drain.
+
+## Recently discovered opportunities
+
+Items surfaced during a codebase audit against the TODO list. Not duplicates of the above — genuine gaps.
+
+- [ ] **Expose daemon version over RPC** — `cmd/root.go` already carries `Version`, `CommitSHA`, and `BuildDate` vars; the COSMIC GUI's daemon page wants them but only gets reachability + uptime today. Add `Daemon.GetVersion` RPC.
+- [ ] **CI pipeline** — GitHub Actions workflow running `go build`, `go vet`, and the e2e harness on push. A `just test` recipe would give it a single entry point.
+- [ ] **Live PTY preview in the COSMIC GUI** — the fleet page defers a console pane (`gui/src/pages/fleet.rs`). Real-time terminal rendering in the GUI would be the killer feature.
+- [ ] **WebSocket transport** — a browser-based watcher can't speak net/rpc over a Unix socket today. A companion proxy or in-process WebSocket endpoint would open the door to web dashboards and zero-install observers.
+- [ ] **Session labels** — `wisp server --label "deploy-staging"` for freeform tagging, filterable in `wisp ps` and the GUI. Lighter than named sessions; pairs well with the sessions list.
+- [ ] **Export recordings as asciicast v2** — beyond raw byte capture, produce shareable `.cast` files that asciinema.org and `agg` can render.
+- [ ] **SSH public-key allowlist per session** — refinement of the Authentication TODO: read from `~/.ssh/authorized_keys` or a per-session temp file so only known keys can attach.
+- [ ] **`just` tab completion** — generate shell completions for all 20+ just recipes so new contributors discover them faster.

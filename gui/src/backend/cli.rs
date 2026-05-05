@@ -79,7 +79,7 @@ impl CliBackend {
             && let Some(msg) = envelope.error
         {
             tracing::warn!(?args, %msg, "wisp returned error envelope");
-            return Err(anyhow!(msg));
+            return Err(anyhow!(translate_error(&msg)));
         }
 
         let msg = if stderr.is_empty() {
@@ -88,7 +88,10 @@ impl CliBackend {
             stderr
         };
         tracing::warn!(?args, status = %output.status, %msg, "wisp exited non-zero");
-        Err(anyhow!("wisp exited with {}: {}", output.status, msg))
+        Err(anyhow!(
+            "{}",
+            translate_error(&format!("wisp exited with {}: {}", output.status, msg))
+        ))
     }
 
     async fn exec_json<T: serde::de::DeserializeOwned>(&self, args: &[&str]) -> Result<T> {
@@ -116,6 +119,26 @@ impl CliBackend {
     async fn action_by_id(&self, verb: &str, session_id: &str) -> Result<()> {
         self.exec_action(&[verb, session_id]).await.map(|_| ())
     }
+}
+
+/// Translates a few common wire-level errors into friendlier messages
+/// before they hit the in-app banner. Most of these are signals that the
+/// running daemon is older than the CLI binary the GUI is calling — once
+/// the user restarts the daemon, the underlying gob/RPC errors stop.
+fn translate_error(raw: &str) -> String {
+    let version_mismatch = raw.contains("gob: decoding into local")
+        || raw.contains("gob: wrong type for")
+        || raw.contains("can't find method Daemon.")
+        || raw.contains("rpc: can't find method");
+    if version_mismatch {
+        return format!(
+            "Daemon is out of date — its RPC surface predates this GUI. \
+             Restart it (e.g. `pkill wisp-dev daemon` then \
+             `~/.local/bin/wisp-dev daemon &`) and retry.\n\n\
+             Original error: {raw}"
+        );
+    }
+    raw.to_string()
 }
 
 fn truncate_for_log(s: &str) -> String {

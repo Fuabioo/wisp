@@ -1,7 +1,7 @@
 // Settings page — edits a `Settings` draft and persists on Save.
 
 use cosmic::iced::{Alignment, Length};
-use cosmic::widget::{button, container, text, text_input, Column, Row};
+use cosmic::widget::{button, container, text, text_input, toggler, Column, Row};
 use cosmic::Element;
 
 use crate::app::{Message, WispAdmin};
@@ -42,6 +42,26 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
         )
         .spacing(4);
 
+    let decorations_row = Column::new()
+        .push(text("Show window decorations").size(14))
+        .push(text(
+            "When off, the OS / cosmic-shell header bar (title, close \
+             button, nav-bar toggle) is hidden for a leaner chrome. The \
+             sidebar can still be toggled with Ctrl+B and the right-click \
+             menu offers a shortcut to this Settings page.",
+        ))
+        .push(
+            Row::new()
+                .push(
+                    toggler(app.settings_draft.show_decorations)
+                        .on_toggle(Message::SettingsDecorationsChanged),
+                )
+                .push(text("Show decorations"))
+                .spacing(8)
+                .align_y(Alignment::Center),
+        )
+        .spacing(4);
+
     let save_btn: Element<'a, Message> = if dirty {
         button::suggested("Save").on_press(Message::SaveSettings).into()
     } else {
@@ -66,6 +86,7 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
             .push(header)
             .push(shell_row)
             .push(host_row)
+            .push(decorations_row)
             .push(actions)
             .spacing(20)
             .padding(24)

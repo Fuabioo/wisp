@@ -17,6 +17,13 @@ pub struct Settings {
     /// to the value of `hostname(1)` so other PCs on the LAN can copy
     /// the string without first guessing where to connect.
     pub connect_host: String,
+
+    /// Whether to render the OS / cosmic-shell window decorations
+    /// (header bar with title, close/min/max buttons, nav-bar toggle).
+    /// Hide this if you want a leaner chrome — pair with the keyboard
+    /// shortcut and right-click menu since the nav-bar toggle goes with
+    /// the decorations.
+    pub show_decorations: bool,
 }
 
 impl Default for Settings {
@@ -24,6 +31,7 @@ impl Default for Settings {
         Self {
             default_shell: detect_default_shell(),
             connect_host: detect_hostname(),
+            show_decorations: true,
         }
     }
 }

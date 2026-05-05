@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use cosmic::app::{Core, Task};
-use cosmic::iced::{event, window, Length, Subscription};
-use cosmic::widget::{button, container, nav_bar, text, Column, Row};
+use cosmic::iced::{event, keyboard, window, Length, Subscription};
+use cosmic::widget::{button, container, menu, nav_bar, text, Column, Row};
 use cosmic::Element;
 
 use crate::backend::{CliBackend, PeerInfo, ServerInfo, WispBackend};
@@ -122,9 +122,15 @@ pub enum Message {
 
     SettingsShellChanged(String),
     SettingsHostChanged(String),
+    SettingsDecorationsChanged(bool),
     SaveSettings,
     RevertSettings,
     ResetSettings,
+
+    NavigateTo(Page),
+    NavSelected(nav_bar::Id),
+    ToggleSidebar,
+    ApplyInitialSettings,
 
     DismissError,
 }
@@ -206,8 +212,12 @@ impl cosmic::Application for WispAdmin {
             async move { backend.list_servers().await.map_err(|e| e.to_string()) },
             |result| act(Message::SessionsLoaded(result)),
         );
+        // Self-message that fires after the framework has set up the
+        // window, so we can apply the persisted decorations state (if
+        // off) without racing main_window_id().
+        let apply_initial = Task::done(act(Message::ApplyInitialSettings));
 
-        (app, initial_load)
+        (app, Task::batch([initial_load, apply_initial]))
     }
 
     fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
@@ -472,13 +482,24 @@ impl cosmic::Application for WispAdmin {
                 self.settings_draft.connect_host = host;
                 Task::none()
             }
+            Message::SettingsDecorationsChanged(show) => {
+                self.settings_draft.show_decorations = show;
+                Task::none()
+            }
             Message::SaveSettings => {
+                let decorations_changed =
+                    self.settings.show_decorations != self.settings_draft.show_decorations;
                 if let Err(err) = self.settings_draft.save() {
                     self.record_error(format!("could not save settings: {}", err));
+                    Task::none()
                 } else {
                     self.settings = self.settings_draft.clone();
+                    if decorations_changed {
+                        self.toggle_decorations_task()
+                    } else {
+                        Task::none()
+                    }
                 }
-                Task::none()
             }
             Message::RevertSettings => {
                 self.settings_draft = self.settings.clone();
@@ -487,6 +508,32 @@ impl cosmic::Application for WispAdmin {
             Message::ResetSettings => {
                 self.settings_draft = Settings::default();
                 Task::none()
+            }
+            Message::NavigateTo(page) => {
+                let target = self
+                    .nav
+                    .iter()
+                    .find(|e| self.nav.data::<Page>(*e).copied() == Some(page));
+                if let Some(entity) = target {
+                    self.nav.activate(entity);
+                }
+                Task::none()
+            }
+            Message::NavSelected(id) => {
+                self.nav.activate(id);
+                Task::none()
+            }
+            Message::ToggleSidebar => {
+                let active = self.core.nav_bar_active();
+                self.core_mut().nav_bar_set_toggled(!active);
+                Task::none()
+            }
+            Message::ApplyInitialSettings => {
+                if !self.settings.show_decorations {
+                    self.toggle_decorations_task()
+                } else {
+                    Task::none()
+                }
             }
             Message::DismissError => {
                 self.last_error = None;
@@ -504,6 +551,31 @@ impl cosmic::Application for WispAdmin {
         Task::none()
     }
 
+    /// Override the default nav-bar render to halve the max width — the
+    /// default 280 is generous for our four short page labels. Hard-cap at
+    /// 160 so the sidebar feels compact but still legible.
+    ///
+    /// Cosmic's internal `Action::NavBar` is private, so we wire activation
+    /// to our own `Message::NavSelected` and lift the resulting Element
+    /// into `cosmic::Action::App(...)`. The framework's `on_nav_select`
+    /// trait method won't fire for clicks here — we handle activation in
+    /// `update()` instead.
+    fn nav_bar(&self) -> Option<Element<'_, cosmic::Action<Self::Message>>> {
+        if !self.core().nav_bar_active() {
+            return None;
+        }
+        let nav_model = self.nav_model()?;
+        let mut nav = cosmic::widget::nav_bar(nav_model, Message::NavSelected)
+            .into_container()
+            .width(Length::Shrink)
+            .height(Length::Fill);
+        if !self.core().is_condensed() {
+            nav = nav.max_width(160);
+        }
+        let element: Element<'_, Message> = nav.into();
+        Some(element.map(cosmic::Action::App))
+    }
+
     fn view(&self) -> Element<'_, Self::Message> {
         let page = self.active_page();
         let body: Element<'_, Self::Message> = match page {
@@ -519,27 +591,37 @@ impl cosmic::Application for WispAdmin {
             layout = layout.push(banner);
         }
 
-        layout
+        let main: Element<'_, Self::Message> = layout
             .push(container(body).width(Length::Fill).height(Length::Fill))
             .spacing(0)
             .width(Length::Fill)
             .height(Length::Fill)
-            .into()
+            .into();
+
+        // Right-click anywhere in the body opens this menu — handy when
+        // window decorations are off and the user can't reach the sidebar
+        // toggle to navigate.
+        cosmic::widget::context_menu(main, Some(self.context_menu_items())).into()
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
-        let focus = event::listen_with(|ev, _, _| match ev {
+        let focus_and_keys = event::listen_with(|ev, _, _| match ev {
             cosmic::iced::Event::Window(window::Event::Focused) => {
                 Some(Message::WindowFocused(true))
             }
             cosmic::iced::Event::Window(window::Event::Unfocused) => {
                 Some(Message::WindowFocused(false))
             }
+            cosmic::iced::Event::Keyboard(keyboard::Event::KeyPressed {
+                key: keyboard::Key::Character(c),
+                modifiers,
+                ..
+            }) if modifiers.control() && c.as_str() == "b" => Some(Message::ToggleSidebar),
             _ => None,
         });
 
         if !self.window_focused {
-            return focus;
+            return focus_and_keys;
         }
 
         let tick = cosmic::iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick);
@@ -550,9 +632,9 @@ impl cosmic::Application for WispAdmin {
         if ghost_visible {
             let anim = cosmic::iced::time::every(Duration::from_millis(ANIM_TICK_MS))
                 .map(|_| Message::AnimTick);
-            Subscription::batch([tick, anim, focus])
+            Subscription::batch([tick, anim, focus_and_keys])
         } else {
-            Subscription::batch([tick, focus])
+            Subscription::batch([tick, focus_and_keys])
         }
     }
 }
@@ -563,6 +645,29 @@ impl WispAdmin {
             .data::<Page>(self.nav.active())
             .copied()
             .unwrap_or(Page::Fleet)
+    }
+
+    fn toggle_decorations_task(&self) -> Task<Message> {
+        match self.core.main_window_id() {
+            Some(id) => cosmic::iced::runtime::window::toggle_decorations(id),
+            None => Task::none(),
+        }
+    }
+
+    fn context_menu_items(&self) -> Vec<menu::Tree<Message>> {
+        let item = |label: &'static str, msg: Message| -> menu::Tree<Message> {
+            let element: Element<'static, Message> = button::standard(label)
+                .on_press(msg)
+                .width(Length::Fixed(220.0))
+                .into();
+            menu::Tree::new(element)
+        };
+        vec![
+            item("Fleet", Message::NavigateTo(Page::Fleet)),
+            item("Settings", Message::NavigateTo(Page::Settings)),
+            item("About", Message::NavigateTo(Page::About)),
+            item("Toggle sidebar  (Ctrl+B)", Message::ToggleSidebar),
+        ]
     }
 
     fn error_banner(&self) -> Option<Element<'_, Message>> {
