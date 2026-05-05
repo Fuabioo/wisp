@@ -21,7 +21,7 @@ const ORIGINAL: &str = include_str!("../../../assets/logo-wisp.svg");
 /// Number of pre-baked frames cycled through at render time. 64 frames
 /// over the 11s master cycle works out to ~6 fps of visible animation —
 /// not browser-smooth but enough to read as a wisp shimmer.
-const FRAMES: usize = 64;
+pub const FRAMES: usize = 64;
 
 /// Master loop period — chosen as the longest SMIL period (the teal
 /// stop-colour at 11s) so all sub-animations complete at least one full
@@ -67,12 +67,19 @@ static FRAME_HANDLES: OnceLock<Vec<svg::Handle>> = OnceLock::new();
 
 pub fn view<'a, Message: 'a>(size: f32, phase: f32) -> Element<'a, Message> {
     let handles = frame_handles();
-    let frame_idx = ((phase * FRAMES as f32) as usize) % FRAMES;
+    let frame_idx = phase_to_frame(phase);
 
     Svg::new(handles[frame_idx].clone())
         .width(Length::Fixed(size))
         .height(Length::Fixed(size))
         .into()
+}
+
+/// Maps a `[0,1)` phase to a frame index. Used by app.rs to dedupe
+/// per-tick state mutations: if the frame index didn't change, there's
+/// nothing visually new and iced shouldn't be asked to re-render.
+pub fn phase_to_frame(phase: f32) -> usize {
+    ((phase * FRAMES as f32) as usize) % FRAMES
 }
 
 fn frame_handles() -> &'static [svg::Handle] {

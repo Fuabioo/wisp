@@ -40,7 +40,11 @@ pub struct WispAdmin {
 /// sub-animations complete at least one cycle inside it.
 /// `ghost_art::view` decomposes this into per-attribute timings.
 const ANIM_CYCLE_SECS: f32 = 11.0;
-const ANIM_TICK_MS: u64 = 50;
+/// Anim heartbeat rate. Each tick advances `anim_phase`, but the field
+/// only mutates when the rendered frame would actually change — so iced
+/// re-renders ≈ ghost_art::FRAMES / ANIM_CYCLE_SECS times per second
+/// (~6 Hz at 64 frames over 11 s) regardless of how fast we tick.
+const ANIM_TICK_MS: u64 = 100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -218,7 +222,16 @@ impl cosmic::Application for WispAdmin {
             }
             Message::AnimTick => {
                 let step = ANIM_TICK_MS as f32 / 1000.0 / ANIM_CYCLE_SECS;
-                self.anim_phase = (self.anim_phase + step) % 1.0;
+                let next = (self.anim_phase + step) % 1.0;
+                // Only mutate state — and thus trigger an iced re-render —
+                // when the rendered frame would actually differ. Otherwise
+                // we'd churn the whole widget tree at 10 Hz to draw the
+                // same ghost frame.
+                if crate::components::ghost_art::phase_to_frame(next)
+                    != crate::components::ghost_art::phase_to_frame(self.anim_phase)
+                {
+                    self.anim_phase = next;
+                }
                 Task::none()
             }
             Message::WindowFocused(focused) => {
@@ -525,13 +538,21 @@ impl cosmic::Application for WispAdmin {
             _ => None,
         });
 
-        if self.window_focused {
-            let tick = cosmic::iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick);
+        if !self.window_focused {
+            return focus;
+        }
+
+        let tick = cosmic::iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick);
+
+        // Only run the ghost animation when a page that actually shows
+        // the ghost is active. Settings / Daemon get no anim wakeups.
+        let ghost_visible = matches!(self.active_page(), Page::Fleet | Page::About);
+        if ghost_visible {
             let anim = cosmic::iced::time::every(Duration::from_millis(ANIM_TICK_MS))
                 .map(|_| Message::AnimTick);
             Subscription::batch([tick, anim, focus])
         } else {
-            focus
+            Subscription::batch([tick, focus])
         }
     }
 }

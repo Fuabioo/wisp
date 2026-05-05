@@ -94,6 +94,12 @@ gui-run: install-dev-fast
 gui-run-isolated: install-dev-fast
     WISP_BIN=$HOME/.local/bin/wisp-dev WISP_SOCKET=$XDG_RUNTIME_DIR/wisp-dev.sock RUST_LOG=info,wisp_admin=debug cargo run --manifest-path gui/Cargo.toml
 
+# Run a release build of the GUI. Debug builds spend most of their time
+# in iced's unoptimised wgpu pipeline; release feels markedly snappier on
+# hover / nav transitions. Compiles slower the first time but worth it.
+gui-run-release: install-dev-fast
+    WISP_BIN=$HOME/.local/bin/wisp-dev RUST_LOG=info,wisp_admin=info cargo run --release --manifest-path gui/Cargo.toml
+
 # Build the COSMIC admin GUI in release mode
 gui-release:
     cargo build --manifest-path gui/Cargo.toml --release
