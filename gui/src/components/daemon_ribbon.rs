@@ -1,5 +1,5 @@
 use cosmic::iced::{Alignment, Length};
-use cosmic::widget::{button, container, text, Row};
+use cosmic::widget::{container, text, Row};
 use cosmic::Element;
 
 use crate::app::{Message, WispAdmin};
@@ -32,21 +32,17 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
         uptime
     );
 
+    let menu_handle = cosmic::widget::icon::from_name("open-menu-symbolic").handle();
     let menu_btn: Element<'a, Message> = if app.menu_open {
-        button::custom(text("≡").size(18))
-            .padding(6)
-            .class(cosmic::theme::Button::Suggested)
-            .width(Length::Fixed(36.0))
-            .height(Length::Fixed(36.0))
+        cosmic::widget::button::icon(menu_handle)
             .on_press(Message::CloseMenu)
+            .extra_small()
+            .selected(true)
             .into()
     } else {
-        button::custom(text("≡").size(18))
-            .padding(6)
-            .class(cosmic::theme::Button::Icon)
-            .width(Length::Fixed(36.0))
-            .height(Length::Fixed(36.0))
+        cosmic::widget::button::icon(menu_handle)
             .on_press(Message::OpenMenu)
+            .extra_small()
             .into()
     };
 

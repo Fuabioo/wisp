@@ -147,45 +147,49 @@ fn spine_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
 }
 
 fn header_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Message> {
-    // Obsidian-style icon buttons: 36×36, single emoji, transparent
-    // chrome with the cosmic Icon button class providing the hover tint.
-    let icon_btn = |glyph: &'static str, msg: Message| -> Element<'a, Message> {
-        button::custom(text(glyph).size(18))
-            .padding(6)
-            .class(cosmic::theme::Button::Icon)
-            .width(Length::Fixed(36.0))
-            .height(Length::Fixed(36.0))
+    // Real icons via cosmic::widget::icon::from_name (resolves against
+    // the user's freedesktop icon theme). symbolic variants render
+    // monochrome and pick up cosmic's accent / status tinting on hover.
+    let icon_btn = |name: &'static str, msg: Message| -> Element<'a, Message> {
+        cosmic::widget::button::icon(cosmic::widget::icon::from_name(name).handle())
             .on_press(msg)
-            .into()
-    };
-    let danger_icon_btn = |glyph: &'static str, msg: Message| -> Element<'a, Message> {
-        button::custom(text(glyph).size(18))
-            .padding(6)
-            .class(cosmic::theme::Button::Destructive)
-            .width(Length::Fixed(36.0))
-            .height(Length::Fixed(36.0))
-            .on_press(msg)
+            .extra_small()
             .into()
     };
 
     let action_area: Element<'a, Message> = if app.kill_confirm.as_ref() == Some(&session.id) {
         Row::new()
             .push(text("kill?"))
-            .push(icon_btn("✗", Message::CancelKill))
-            .push(danger_icon_btn("✓", Message::ConfirmKill(session.id.clone())))
+            .push(icon_btn("window-close-symbolic", Message::CancelKill))
+            .push(icon_btn(
+                "object-select-symbolic",
+                Message::ConfirmKill(session.id.clone()),
+            ))
             .spacing(6)
             .align_y(Alignment::Center)
             .into()
     } else {
         let toggle: Element<'a, Message> = if session.is_active() {
-            icon_btn("💤", Message::DownSession(session.id.clone()))
+            icon_btn(
+                "media-playback-pause-symbolic",
+                Message::DownSession(session.id.clone()),
+            )
         } else {
-            icon_btn("✨", Message::UpSession(session.id.clone()))
+            icon_btn(
+                "media-playback-start-symbolic",
+                Message::UpSession(session.id.clone()),
+            )
         };
         Row::new()
             .push(toggle)
-            .push(icon_btn("🔁", Message::RefreshSession(session.id.clone())))
-            .push(danger_icon_btn("💀", Message::AskKill(session.id.clone())))
+            .push(icon_btn(
+                "view-refresh-symbolic",
+                Message::RefreshSession(session.id.clone()),
+            ))
+            .push(icon_btn(
+                "edit-delete-symbolic",
+                Message::AskKill(session.id.clone()),
+            ))
             .spacing(6)
             .align_y(Alignment::Center)
             .into()

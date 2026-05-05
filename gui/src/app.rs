@@ -634,10 +634,12 @@ impl cosmic::Application for WispAdmin {
         // Hamburger menu trigger lives in the daemon ribbon. When
         // `menu_open` is true the popover overlays a small panel of nav
         // shortcuts on top of the body — useful when decorations are
-        // hidden and the sidebar toggle is unreachable.
-        let mut pop = popover(main);
+        // hidden and the sidebar toggle is unreachable. modal(true)
+        // captures clicks outside the popup so we can dismiss via
+        // on_close — without modal the popup wasn't visibly rendering.
+        let mut pop = popover(main).modal(true);
         if self.menu_open {
-            pop = pop.popup(self.menu_popup());
+            pop = pop.popup(self.menu_popup()).on_close(Message::CloseMenu);
         }
         pop.into()
     }
