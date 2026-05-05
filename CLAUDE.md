@@ -28,10 +28,10 @@ CLI surface (cobra + `charm.land/fang/v2`):
 
 ## Architecture
 
-Two-process model communicating over a Unix socket at `/tmp/wisp.sock` via Go's `net/rpc` (gob).
+Two-process model communicating over a Unix socket (default `$XDG_RUNTIME_DIR/wisp.sock`, falling back to `/tmp/wisp.sock`) via Go's `net/rpc` (gob).
 
 - **Daemon process** (`cmd/daemon.go` → `internal/core/daemon.go`):
-  - Registers `*core.Daemon` for RPC, listens on `/tmp/wisp.sock`.
+  - Registers `*core.Daemon` for RPC, listens on the configured socket (see "Conventions specific to this repo" below).
   - Holds `servers map[string]*ServerSession` guarded by a single `sync.Mutex`. Each session bundles `ServerInfo`, a `*ssh.Server` (`charm.land/wish/v2`), and a `*PTYManager`.
   - RPC methods (`StartServer`, `ListServers`, `KillServer`, `DownServer`, `UpServer`) all follow `func(req, res) error` with pointer args — required by `net/rpc`.
 - **CLI subcommands** (`cmd/*.go`): each `RunE` dials the Unix socket, calls a single RPC, prints styled output. Keep this thin — business logic stays in `internal/core`.
@@ -41,7 +41,7 @@ Per-session SSH server is built with `wish.NewServer` using a per-port host key 
 **`PTYManager` (`internal/core/pty.go`) is the heart of the system.**
 - One PTY per session, started by spawning `$SHELL` (fallback `zsh`) under `creack/pty`. Multiple SSH clients are *fanned out* from the same `*os.File`: a single `broadcast()` goroutine reads from the PTY and writes to every connected `ssh.Session` in `socks`.
 - Each connected client runs `HandleSession`, which reads bytes from the SSH session and forwards them to the PTY. A `!>` digraph (must arrive within 250ms) is intercepted and opens the bubbletea-based pause menu (`menu.go`) instead of being forwarded; a lone `!` followed by anything else (or a timeout) is replayed verbatim.
-- `Resize` tracks each client's window dimensions and calls `pty.Setsize` with the per-axis minimum across all clients — this is the "minimum viable dimension" feature so no single small client breaks the others.
+- `Attach` registers a connected client (clientID, remote address, initial window) into `socks`; subsequent `Resize` calls only update the window. `updateSizeLocked` calls `pty.Setsize` with the per-axis minimum across all clients — this is the "minimum viable dimension" feature so no single small client breaks the others. `Peers()` snapshots `socks` as a slice of the RPC-safe `PeerInfo`; `Kick(clientID)` closes the matching session.
 - When the underlying PTY EOFs, `broadcast` closes all sockets and invokes `onClose` (set by the daemon to remove the session from its map and close the SSH server).
 
 `StartServer` and `UpServer` both call `createSshServer`; `DownServer` only closes the SSH server but keeps the `PTYManager` alive so `UpServer` can re-attach. `KillServer` tears down both.
@@ -52,7 +52,7 @@ Per-session SSH server is built with `wish.NewServer` using a per-port host key 
 
 - Module path is `github.com/Fuabioo/wisp`. Imports look like `github.com/Fuabioo/wisp/cmd`, `github.com/Fuabioo/wisp/internal/core`.
 - Version metadata lives in `cmd/root.go` as package-level vars overridden by `-ldflags -X 'github.com/Fuabioo/wisp/cmd.Version=...'` etc. — keep the names in sync if you rename.
-- The Unix socket path `/tmp/wisp.sock` is hardcoded in both `cmd/daemon.go` and every client subcommand. If you change it, update both sides.
+- The daemon socket path is configured via the `--socket` persistent flag (default in `cmd/root.go:defaultSocketPath` — `$WISP_SOCKET`, then `$XDG_RUNTIME_DIR/wisp.sock`, then `/tmp/wisp.sock`). All client subcommands and `cmd/daemon.go` read from the package-level `socketPath` variable; the flag must remain a persistent flag on `rootCmd`.
 - All daemon RPC handlers must keep the `func(req *T, res *U) error` shape or `net/rpc` will silently skip them.
 - Style helpers (`successStyle`, `accentStyle`) are in `cmd/root.go` — reuse them rather than re-creating `lipgloss` styles per command.
 - Charm libraries are pinned to the v2 line under the `charm.land/*/v2` import paths (`bubbletea`, `lipgloss`, `wish`, `fang`, `log`). The `ssh` package is still imported from `github.com/charmbracelet/ssh` (no v2 module yet). Do not mix v1 `github.com/charmbracelet/{bubbletea,lipgloss,wish,fang}` imports back in.

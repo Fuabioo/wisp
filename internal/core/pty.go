@@ -14,11 +14,28 @@ import (
 	"github.com/creack/pty"
 )
 
+type peerEntry struct {
+	ClientID    string
+	Window      ssh.Window
+	RemoteAddr  string
+	ConnectedAt time.Time
+}
+
+// PeerInfo is the RPC-safe view of a connected client. Kept flat (no charm
+// types) so non-Go consumers can decode it.
+type PeerInfo struct {
+	ClientID    string
+	Width       int
+	Height      int
+	RemoteAddr  string
+	ConnectedAt time.Time
+}
+
 type PTYManager struct {
 	file     *os.File
 	cmd      *exec.Cmd
 	mu       sync.Mutex
-	socks    map[ssh.Session]ssh.Window
+	socks    map[ssh.Session]peerEntry
 	onClose  func()
 	lastRows uint16
 	lastCols uint16
@@ -69,7 +86,7 @@ func NewPTYManager(onClose func()) (*PTYManager, error) {
 	pm := &PTYManager{
 		file:    f,
 		cmd:     c,
-		socks:   make(map[ssh.Session]ssh.Window),
+		socks:   make(map[ssh.Session]peerEntry),
 		onClose: onClose,
 	}
 
@@ -121,6 +138,70 @@ func (pm *PTYManager) broadcast() {
 	}
 }
 
+// Attach registers a new client session with full identity. Called once when
+// the SSH session is established.
+func (pm *PTYManager) Attach(s ssh.Session, clientID, remoteAddr string, win ssh.Window) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.socks[s] = peerEntry{
+		ClientID:    clientID,
+		Window:      win,
+		RemoteAddr:  remoteAddr,
+		ConnectedAt: time.Now(),
+	}
+	pm.updateSizeLocked()
+}
+
+// Resize updates the window of an existing client session. No-op if the
+// session is unknown (e.g. resize event arrived during teardown).
+func (pm *PTYManager) Resize(s ssh.Session, win ssh.Window) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	if entry, ok := pm.socks[s]; ok {
+		entry.Window = win
+		pm.socks[s] = entry
+	}
+	pm.updateSizeLocked()
+}
+
+// Peers returns a snapshot of the currently attached clients. Safe to call
+// from any goroutine; ordering is not stable.
+func (pm *PTYManager) Peers() []PeerInfo {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	out := make([]PeerInfo, 0, len(pm.socks))
+	for _, entry := range pm.socks {
+		out = append(out, PeerInfo{
+			ClientID:    entry.ClientID,
+			Width:       entry.Window.Width,
+			Height:      entry.Window.Height,
+			RemoteAddr:  entry.RemoteAddr,
+			ConnectedAt: entry.ConnectedAt,
+		})
+	}
+	return out
+}
+
+// Kick closes the SSH session belonging to the given clientID. Returns true
+// if a matching client was found. The actual cleanup of socks happens via the
+// usual HandleSession defer.
+func (pm *PTYManager) Kick(clientID string) bool {
+	pm.mu.Lock()
+	var target ssh.Session
+	for s, entry := range pm.socks {
+		if entry.ClientID == clientID {
+			target = s
+			break
+		}
+	}
+	pm.mu.Unlock()
+	if target == nil {
+		return false
+	}
+	target.Close()
+	return true
+}
+
 func (pm *PTYManager) HandleSession(s ssh.Session, clientID string) {
 	defer func() {
 		pm.mu.Lock()
@@ -168,7 +249,10 @@ func (pm *PTYManager) HandleSession(s ssh.Session, clientID string) {
 				pendingBang = false
 				timeoutChan = nil
 				if c == '>' {
-					choice, _ := RunMenu(s, chanReader{ch: bytesChan}, clientID)
+					pm.mu.Lock()
+					win := pm.socks[s].Window
+					pm.mu.Unlock()
+					choice, _ := RunMenu(s, chanReader{ch: bytesChan}, clientID, win.Width, win.Height, pm.Peers)
 					if choice == "Disconnect" {
 						s.Close()
 						return
@@ -199,33 +283,26 @@ func (pm *PTYManager) HandleSession(s ssh.Session, clientID string) {
 	}
 }
 
-func (pm *PTYManager) Resize(s ssh.Session, win ssh.Window) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-	pm.socks[s] = win
-	pm.updateSizeLocked()
-}
-
 func (pm *PTYManager) updateSizeLocked() {
 	if len(pm.socks) == 0 {
 		return
 	}
 	var minRows, minCols uint16
 	first := true
-	for _, win := range pm.socks {
-		if win.Width == 0 || win.Height == 0 {
+	for _, entry := range pm.socks {
+		if entry.Window.Width == 0 || entry.Window.Height == 0 {
 			continue
 		}
 		if first {
-			minRows = uint16(win.Height)
-			minCols = uint16(win.Width)
+			minRows = uint16(entry.Window.Height)
+			minCols = uint16(entry.Window.Width)
 			first = false
 		} else {
-			if uint16(win.Height) < minRows {
-				minRows = uint16(win.Height)
+			if uint16(entry.Window.Height) < minRows {
+				minRows = uint16(entry.Window.Height)
 			}
-			if uint16(win.Width) < minCols {
-				minCols = uint16(win.Width)
+			if uint16(entry.Window.Width) < minCols {
+				minCols = uint16(entry.Window.Width)
 			}
 		}
 	}

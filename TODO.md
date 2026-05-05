@@ -75,10 +75,10 @@ User-defined shell commands triggered by daemon events, similar to Claude Code's
 ## Pause menu
 
 - [ ] Configurable trigger sequence (currently hardcoded `!>`)
-- [ ] **List peers** — show every client currently in the session
+- [x] **List peers** — show every client currently in the session
 - [ ] **Send message** — broadcast a one-line note to all peers via a small overlay
 - [ ] **Lock session** — refuse new SSH connections until unlocked
-- [ ] **Kick peer** (owner only)
+- [ ] **Kick peer** (owner only) — RPC + `wisp kick` CLI exist; pause-menu entry is gated on owner-vs-guest permissions
 - [ ] **Toggle read-only** — observe-only mode for the current client
 
 ## Sessions
@@ -91,8 +91,8 @@ User-defined shell commands triggered by daemon events, similar to Claude Code's
 ## Security
 
 - [ ] **Authentication** — currently anyone who can reach the SSH port joins as that user. Options: per-session password, public-key allowlist, one-time tokens.
-- [ ] **Owner vs. guest permissions** for menu actions (kick, lock, configure)
-- [ ] Move daemon socket to `$XDG_RUNTIME_DIR` (per-user) instead of `/tmp` (world-readable)
+- [ ] **Owner vs. guest permissions** for menu actions (kick, lock, configure) — `Daemon.KickPeer` RPC exists but enforcement is still TODO
+- [x] Move daemon socket to `$XDG_RUNTIME_DIR` (per-user) instead of `/tmp` (world-readable) — default sourced from `$XDG_RUNTIME_DIR`, override via `--socket` / `WISP_SOCKET`
 - [ ] Optional connection rate limiting
 
 ## Observability
@@ -102,8 +102,8 @@ User-defined shell commands triggered by daemon events, similar to Claude Code's
 
 ## Code quality
 
-- [ ] **Tests** — currently zero. PTY fan-out, the `!>` digraph state machine, the daemon RPC handlers, and `updateSizeLocked` minimum-dimension calculation are all worth covering.
+- [ ] **Tests** — `scripts/e2e.sh` covers the full pause-menu / peers / kick / userCounts flow via tmux + ssh. Targeted Go unit tests for the `!>` digraph state machine, `updateSizeLocked` minimum-dimension calculation, and the RPC handlers are still pending.
 - [ ] **Code coverage badge** — wire up `go test -cover` in CI (e.g. GitHub Actions + Codecov or coveralls) and surface the badge in `README.md`.
 - [ ] Replace `chanReader` byte-by-byte channel pipeline with a batched `bufio.Reader`-based fan-in. Same correctness, fewer allocations, batched PTY writes.
-- [ ] `userCounts` is a lifetime counter that never decrements — clients get suffixes like `fabio-47` after enough churn. Should track currently-connected count.
+- [x] `userCounts` is a lifetime counter that never decrements — clients get suffixes like `fabio-47` after enough churn. Should track currently-connected count.
 - [ ] Graceful daemon shutdown — current SIGTERM handler closes immediately; should send a goodbye banner and let in-flight writes drain.

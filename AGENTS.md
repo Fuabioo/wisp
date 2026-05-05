@@ -17,7 +17,7 @@ Note: The Go module path is `github.com/Fuabioo/wisp`.
 - `docs/`: Architectural Decision Records (ADRs) and specifications.
 
 ## Architecture & Data Flow
-1. **Daemon:** A long-running process (`just daemon`) listening on a Unix socket (`/tmp/wisp.sock`). Exposes RPC methods (e.g., `Daemon.StartServer`, `Daemon.KillServer`).
+1. **Daemon:** A long-running process (`just daemon`) listening on a Unix socket (default `$XDG_RUNTIME_DIR/wisp.sock`; override via `--socket` or `WISP_SOCKET`). Exposes RPC methods (e.g., `Daemon.StartServer`, `Daemon.KillServer`, `Daemon.ListPeers`, `Daemon.KickPeer`).
 2. **CLI Clients:** Commands like `wisp server` or `wisp down` send RPC calls to the daemon socket instead of doing the work themselves.
 3. **SSH Server:** Each session runs an independent SSH server (via `charm.land/wish/v2` and `github.com/charmbracelet/ssh`) on a specific port.
 4. **PTY Multiplexing:** `PTYManager` spawns a single shell (`$SHELL` or `zsh`). A goroutine (`broadcast()`) reads from the PTY and pushes bytes to all connected SSH clients. It listens to window size changes and dynamically resizes the PTY to the minimum dimensions of all active clients.
@@ -38,6 +38,7 @@ The project uses `just` as a command runner (see `justfile`):
 - `just tidy` - Tidies go modules.
 - `just build-micro` - Creates an ultra-compressed build using `upx`.
 - `just install-deps` - Installs binary analysis tools (`goda`, `gsa`) and `upx`.
+- `just e2e` - Runs `scripts/e2e.sh`, the tmux-driven end-to-end harness (builds wisp, spawns isolated daemon, drives ssh clients, asserts on captured output).
 
 ## Dependencies & Ecosystem
 - Relies heavily on the Charm ecosystem (`charm.land/*/v2`): `wish/v2`, `ssh` (v1), `lipgloss/v2`, `bubbletea/v2`, `fang/v2`. When building TUI components or styling, refer to Charm standard practices.

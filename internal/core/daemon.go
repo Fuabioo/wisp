@@ -13,15 +13,42 @@ import (
 )
 
 var (
-	userCounts   = make(map[string]int)
-	userCountsMu sync.Mutex
+	// userSuffixes tracks currently-in-use integer suffixes per username so
+	// disconnects free up the suffix and reconnects don't drift upward.
+	userSuffixes   = make(map[string]map[int]struct{})
+	userSuffixesMu sync.Mutex
 )
 
-func getClientID(user string) string {
-	userCountsMu.Lock()
-	defer userCountsMu.Unlock()
-	userCounts[user]++
-	return fmt.Sprintf("%s-%d", user, userCounts[user])
+// acquireClientID reserves the smallest unused integer suffix for the given
+// user and returns the assembled clientID along with a release func that the
+// caller must invoke when the session ends.
+func acquireClientID(user string) (string, func()) {
+	userSuffixesMu.Lock()
+	defer userSuffixesMu.Unlock()
+	if userSuffixes[user] == nil {
+		userSuffixes[user] = make(map[int]struct{})
+	}
+	n := 1
+	for {
+		if _, taken := userSuffixes[user][n]; !taken {
+			break
+		}
+		n++
+	}
+	userSuffixes[user][n] = struct{}{}
+	clientID := fmt.Sprintf("%s-%d", user, n)
+	return clientID, func() { releaseClientID(user, n) }
+}
+
+func releaseClientID(user string, n int) {
+	userSuffixesMu.Lock()
+	defer userSuffixesMu.Unlock()
+	if set, ok := userSuffixes[user]; ok {
+		delete(set, n)
+		if len(set) == 0 {
+			delete(userSuffixes, user)
+		}
+	}
 }
 
 type ServerInfo struct {
@@ -92,7 +119,9 @@ func (d *Daemon) createSshServer(port int, id string, pm *PTYManager) (*ssh.Serv
 		wish.WithMiddleware(
 			func(h ssh.Handler) ssh.Handler {
 				return func(s ssh.Session) {
-					clientID := getClientID(s.User())
+					clientID, release := acquireClientID(s.User())
+					defer release()
+
 					wish.Println(s, lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Render("\n"+GhostArt))
 					wish.Println(s, "🌈 Welcome to Wisp! 🌈")
 					wish.Printf(s, "Session ID: %s\n", id)
@@ -104,7 +133,11 @@ func (d *Daemon) createSshServer(port int, id string, pm *PTYManager) (*ssh.Serv
 						return
 					}
 
-					pm.Resize(s, ptyReq.Window)
+					remote := ""
+					if addr := s.RemoteAddr(); addr != nil {
+						remote = addr.String()
+					}
+					pm.Attach(s, clientID, remote, ptyReq.Window)
 					go func() {
 						for win := range winCh {
 							pm.Resize(s, win)
@@ -193,5 +226,45 @@ func (d *Daemon) UpServer(req *string, res *bool) error {
 	sess.Ssh = s
 	sess.Info.Status = "Active"
 	*res = true
+	return nil
+}
+
+// PeersReq identifies a session whose attached clients should be listed.
+type PeersReq struct {
+	SessionID string
+}
+
+// ListPeers returns the clients currently attached to the given session.
+func (d *Daemon) ListPeers(req *PeersReq, res *[]PeerInfo) error {
+	d.mu.Lock()
+	sess, exists := d.servers[req.SessionID]
+	d.mu.Unlock()
+	if !exists {
+		return fmt.Errorf("session %s not found", req.SessionID)
+	}
+	*res = sess.PTY.Peers()
+	return nil
+}
+
+// KickReq targets a single client within a session.
+type KickReq struct {
+	SessionID string
+	ClientID  string
+}
+
+// KickPeer terminates the SSH session of a single client within a wisp
+// session. Sets the bool result to true on a successful kick, false if the
+// client wasn't found.
+func (d *Daemon) KickPeer(req *KickReq, res *bool) error {
+	d.mu.Lock()
+	sess, exists := d.servers[req.SessionID]
+	d.mu.Unlock()
+	if !exists {
+		return fmt.Errorf("session %s not found", req.SessionID)
+	}
+	*res = sess.PTY.Kick(req.ClientID)
+	if !*res {
+		return fmt.Errorf("client %s not found in session %s", req.ClientID, req.SessionID)
+	}
 	return nil
 }

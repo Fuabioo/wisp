@@ -37,6 +37,10 @@ install-hooks:
 tidy:
     go mod tidy
 
+# Run the end-to-end harness (tmux + ssh; builds wisp first)
+e2e:
+    bash scripts/e2e.sh
+
 # Install tools to analyze and reduce binary size
 install-deps:
     go install github.com/loov/goda@latest
