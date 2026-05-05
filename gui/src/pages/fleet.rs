@@ -137,19 +137,51 @@ fn spine_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
     };
 
     Column::new()
-        .push(header_view(session, app.anim_phase))
+        .push(header_view(app, session))
         .push(connect_view(app, session))
         .push(peers_view(app, session))
-        .push(actions_view(app, session))
         .spacing(16)
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
 }
 
-fn header_view<'a>(session: &'a ServerInfo, anim_phase: f32) -> Element<'a, Message> {
+fn header_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Message> {
+    let action_area: Element<'a, Message> = if app.kill_confirm.as_ref() == Some(&session.id) {
+        Row::new()
+            .push(text("kill?"))
+            .push(button::standard("✗").on_press(Message::CancelKill))
+            .push(button::destructive("✓").on_press(Message::ConfirmKill(session.id.clone())))
+            .spacing(6)
+            .align_y(Alignment::Center)
+            .into()
+    } else {
+        let toggle: Element<'a, Message> = if session.is_active() {
+            button::standard("💤")
+                .on_press(Message::DownSession(session.id.clone()))
+                .into()
+        } else {
+            button::suggested("✨")
+                .on_press(Message::UpSession(session.id.clone()))
+                .into()
+        };
+        Row::new()
+            .push(toggle)
+            .push(button::standard("🔁").on_press(Message::RefreshSession(session.id.clone())))
+            .push(button::destructive("💀").on_press(Message::AskKill(session.id.clone())))
+            .spacing(6)
+            .align_y(Alignment::Center)
+            .into()
+    };
+
+    let top_row = Row::new()
+        .push(ghost_art::view::<Message>(96.0, app.anim_phase))
+        .push(container(text("")).width(Length::Fill))
+        .push(action_area)
+        .align_y(Alignment::Center);
+
     Column::new()
-        .push(ghost_art::view::<Message>(96.0, anim_phase))
+        .push(top_row)
         .push(
             text(format!("session · {}", session.short_id()))
                 .size(20)
@@ -364,36 +396,6 @@ fn row_style(
         };
         style
     }
-}
-
-fn actions_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Message> {
-    if app.kill_confirm.as_ref() == Some(&session.id) {
-        return Row::new()
-            .push(text("Are you sure? The shell dies on kill."))
-            .push(button::standard("cancel").on_press(Message::CancelKill))
-            .push(button::destructive("kill").on_press(Message::ConfirmKill(session.id.clone())))
-            .spacing(12)
-            .align_y(Alignment::Center)
-            .into();
-    }
-
-    let toggle: Element<'a, Message> = if session.is_active() {
-        button::standard("💤 sleep")
-            .on_press(Message::DownSession(session.id.clone()))
-            .into()
-    } else {
-        button::suggested("✨ wake")
-            .on_press(Message::UpSession(session.id.clone()))
-            .into()
-    };
-
-    Row::new()
-        .push(toggle)
-        .push(button::standard("🔁 refresh").on_press(Message::RefreshSession(session.id.clone())))
-        .push(button::destructive("kill").on_press(Message::AskKill(session.id.clone())))
-        .spacing(12)
-        .align_y(Alignment::Center)
-        .into()
 }
 
 fn spawn_drawer_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {

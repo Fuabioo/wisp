@@ -139,6 +139,12 @@ pub enum Message {
     PeerHoverEnter(String, String),
     PeerHoverExit(String, String),
 
+    /// Cosmic surface plumbing for the right-click menu. We don't act on
+    /// these — they're produced by `context_menu.on_surface_action(..)`
+    /// and are intercepted by the framework — but we need a Message
+    /// variant to receive them so the wayland popup path activates.
+    SurfaceAction(cosmic::surface::Action),
+
     DismissError,
 }
 
@@ -555,6 +561,11 @@ impl cosmic::Application for WispAdmin {
                 }
                 Task::none()
             }
+            // The framework intercepts these — we just absorb the message.
+            Message::SurfaceAction(action) => {
+                let _ = action;
+                Task::none()
+            }
             Message::DismissError => {
                 self.last_error = None;
                 Task::none()
@@ -620,8 +631,12 @@ impl cosmic::Application for WispAdmin {
 
         // Right-click anywhere in the body opens this menu — handy when
         // window decorations are off and the user can't reach the sidebar
-        // toggle to navigate.
-        cosmic::widget::context_menu(main, Some(self.context_menu_items())).into()
+        // toggle to navigate. on_surface_action activates the wayland
+        // popup path (overlay path adds parent translation to the menu
+        // position, which off-screened the popup ~80% to the right).
+        cosmic::widget::context_menu(main, Some(self.context_menu_items()))
+            .on_surface_action(Message::SurfaceAction)
+            .into()
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
