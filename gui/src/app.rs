@@ -675,11 +675,18 @@ impl WispAdmin {
     }
 
     fn context_menu_items(&self) -> Vec<menu::Tree<Message>> {
+        // menu_button defaults to Length::Fill, which without an outer
+        // bound expands the popover to the parent's full width and skews
+        // its anchor far right of the click. Clamp at both the button's
+        // explicit width and the menu Tree width so the popover sizes
+        // around 220 px and anchors at the cursor.
+        const ITEM_WIDTH: u16 = 220;
         let item = |label: &'static str, msg: Message| -> menu::Tree<Message> {
             let btn = cosmic::widget::menu::menu_button(vec![text(label).into()])
-                .on_press(msg);
+                .on_press(msg)
+                .width(Length::Fixed(ITEM_WIDTH as f32));
             let element: Element<'static, Message> = btn.into();
-            menu::Tree::new(element)
+            menu::Tree::new(element).width(ITEM_WIDTH)
         };
         vec![
             item("Fleet", Message::NavigateTo(Page::Fleet)),
