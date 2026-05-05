@@ -61,6 +61,43 @@ check-deps:
     @command -v gsa >/dev/null 2>&1 && echo "✅ gsa is installed" || echo "❌ gsa is missing (run: just install-deps)"
     @command -v upx >/dev/null 2>&1 && echo "✅ upx is installed" || echo "❌ upx is missing (run: just install-deps)"
 
+# Fast dev install: builds wisp-dev (no UPX) so the GUI can shell out to a
+# fresh CLI without the prod `wisp` binary getting in the way. Used by
+# `gui-run`. Plain `install-dev` still does the upx pass for a deployable bin.
+install-dev-fast:
+    mkdir -p ~/.local/bin
+    go build -trimpath -ldflags="-X 'github.com/Fuabioo/wisp/cmd.Version=dev' -X 'github.com/Fuabioo/wisp/cmd.CommitSHA=$(git rev-parse --short HEAD 2>/dev/null || echo none)' -X 'github.com/Fuabioo/wisp/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)'" -o ~/.local/bin/wisp-dev .
+
+# Type-check the COSMIC admin GUI without producing a binary
+gui-check:
+    cargo check --manifest-path gui/Cargo.toml
+
+# Build the COSMIC admin GUI in debug mode
+gui-build:
+    cargo build --manifest-path gui/Cargo.toml
+
+# Run an isolated dev daemon on a separate socket so it doesn't collide
+# with whatever wisp daemon you already have running. Pair with
+# `just gui-run-isolated` if you want the GUI to talk to it instead of
+# your default daemon.
+daemon-dev: install-dev-fast
+    WISP_SOCKET=$XDG_RUNTIME_DIR/wisp-dev.sock ~/.local/bin/wisp-dev daemon --socket $XDG_RUNTIME_DIR/wisp-dev.sock
+
+# Run the COSMIC admin GUI in dev mode. Rebuilds wisp-dev first (fast, no
+# UPX) and points the GUI's CLI shell-out at it via WISP_BIN, but keeps
+# the default socket path so it talks to whichever wisp-dev daemon you
+# already have running. For an isolated dev daemon, use `gui-run-isolated`.
+gui-run: install-dev-fast
+    WISP_BIN=$HOME/.local/bin/wisp-dev RUST_LOG=info,wisp_admin=debug cargo run --manifest-path gui/Cargo.toml
+
+# Like `gui-run` but points at the isolated dev socket from `daemon-dev`.
+gui-run-isolated: install-dev-fast
+    WISP_BIN=$HOME/.local/bin/wisp-dev WISP_SOCKET=$XDG_RUNTIME_DIR/wisp-dev.sock RUST_LOG=info,wisp_admin=debug cargo run --manifest-path gui/Cargo.toml
+
+# Build the COSMIC admin GUI in release mode
+gui-release:
+    cargo build --manifest-path gui/Cargo.toml --release
+
 # Provision wisp as a user-level systemd daemon
 provision: build-micro
     mkdir -p ~/.local/bin

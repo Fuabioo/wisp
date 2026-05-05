@@ -1,0 +1,35 @@
+[package]
+name = "wisp-admin"
+version = "0.1.0"
+edition = "2024"
+description = "COSMIC-native admin GUI for the wisp daemon."
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "wisp-admin"
+path = "src/main.rs"
+
+[dependencies]
+# libcosmic — System76's Rust framework for COSMIC apps. Pinned to master
+# until they cut a stable release; bump the SHA in Cargo.lock with
+# `cargo update -p libcosmic` and document it in the ADR.
+libcosmic = { git = "https://github.com/pop-os/libcosmic.git", branch = "master", default-features = false, features = ["wayland", "winit", "tokio", "single-instance"] }
+
+# Async runtime — tokio handles subprocess execution for the CliBackend
+# and is the executor cosmic delegates to via the "tokio" feature above.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "time", "io-util", "sync"] }
+
+# Backend types ↔ Go's encoding/json over the --json CLI surface.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+
+# dyn-dispatch async traits (needed because we own `Arc<dyn WispBackend>`
+# in App state and stable Rust still needs help to dyn-ify async fns).
+async-trait = "0.1"
+
+# Error + logging.
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

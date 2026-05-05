@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Wisp Admin
+GenericName=Shared Terminal Manager
+Comment=Manage wisp PTY sessions and attached peers
+Exec=wisp-admin
+Icon=wisp-admin
+Type=Application
+Terminal=false
+Categories=Utility;System;TerminalEmulator;
+Keywords=wisp;ssh;pty;terminal;session;
+StartupNotify=true
+StartupWMClass=dev.fabiomora.WispAdmin
