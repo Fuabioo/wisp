@@ -156,6 +156,13 @@ fn peers_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Me
             Message::KickPeer(session_id_dbl.clone(), client_id)
         })
         .on_category_left_click(move |cat| Message::SortPeers(session_id_sort.clone(), cat))
+        // Workaround for a libcosmic bug: the table wraps every row and
+        // every header in `widget::context_menu`, and that widget's diff()
+        // unwraps a None context-menu unconditionally (panic). The default
+        // builders return None. Returning Some(vec![]) (an empty menu)
+        // sidesteps the panic without showing anything on right-click.
+        .item_context(|_| Some(Vec::new()))
+        .category_context(|_| Some(Vec::new()))
         .width(Length::Fill)
         .into();
 
