@@ -1,11 +1,17 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use cosmic::app::{Core, Task};
-use cosmic::iced::{event, keyboard, window, Length, Subscription};
-use cosmic::widget::{button, container, mouse_area, nav_bar, popover, text, Column, Row};
+use cosmic::iced::{event, keyboard, mouse, window, Length, Point, Subscription};
+use cosmic::widget::{button, container, menu, nav_bar, popover, text, Column, Row};
 use cosmic::Element;
+
+/// Last known cursor position, updated on every CursorMoved event from
+/// the iced subscription. Read at view-time when we need to anchor the
+/// right-click popover. Living outside the app state means cursor
+/// movement doesn't trigger an iced re-render — only right-clicks do.
+static CURSOR_POS: Mutex<Option<Point>> = Mutex::new(None);
 
 use crate::backend::{CliBackend, PeerInfo, ServerInfo, WispBackend};
 use crate::components::peers_table::PeerCategory;
@@ -624,33 +630,47 @@ impl cosmic::Application for WispAdmin {
             layout = layout.push(banner);
         }
 
-        let main_inner: Element<'_, Self::Message> = layout
+        let main: Element<'_, Self::Message> = layout
             .push(container(body).width(Length::Fill).height(Length::Fill))
             .spacing(0)
             .width(Length::Fill)
             .height(Length::Fill)
             .into();
 
-        // Right-click anywhere → also open the menu (alongside the
-        // hamburger trigger in the daemon ribbon). mouse_area only fires
-        // on_right_press for clicks that aren't intercepted by inner
-        // widgets — buttons / inputs swallow theirs, but right-clicking
-        // a session row, table row, empty space, etc. routes here.
-        let main: Element<'_, Self::Message> =
-            mouse_area(main_inner).on_right_press(Message::OpenMenu).into();
-
-        // modal(true) puts the popup on the dialog overlay layer so it
-        // actually renders — without it the popup was attached but
-        // invisible. Click-outside dismisses via on_close.
+        // Right-click triggers a popover popup anchored at the cursor —
+        // matching cosmic-term's pattern. The popover only renders the
+        // popup when `menu_open` is true; cosmic's own dialog rendering
+        // confirmed `modal(true)` is needed for the popup to actually
+        // hit the overlay layer.
         let mut pop = popover(main).modal(true);
         if self.menu_open {
-            pop = pop.popup(self.menu_popup()).on_close(Message::CloseMenu);
+            let anchor = CURSOR_POS
+                .lock()
+                .ok()
+                .and_then(|g| *g)
+                .unwrap_or(Point::new(120.0, 80.0));
+            pop = pop
+                .popup(self.menu_popup())
+                .position(cosmic::widget::popover::Position::Point(anchor))
+                .on_close(Message::CloseMenu);
         }
         pop.into()
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
         let focus_and_keys = event::listen_with(|ev, _, _| match ev {
+            // Track cursor outside app state so 60-Hz mouse-move events
+            // don't trigger iced re-renders. The view reads this at
+            // popover-anchor time only.
+            cosmic::iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                if let Ok(mut guard) = CURSOR_POS.lock() {
+                    *guard = Some(position);
+                }
+                None
+            }
+            cosmic::iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right)) => {
+                Some(Message::OpenMenu)
+            }
             cosmic::iced::Event::Window(window::Event::Focused) => {
                 Some(Message::WindowFocused(true))
             }
@@ -699,33 +719,27 @@ impl WispAdmin {
         }
     }
 
-    /// Dropdown panel shown by the hamburger button or right-click. Each
-    /// entry closes the menu after acting so a single click both
-    /// navigates and dismisses. Uses `Container::Dialog` so cosmic
-    /// renders a proper opaque overlay (Card class was inheriting a
-    /// transparent background on the user's theme).
+    /// Right-click context menu, mirroring cosmic-term's pattern: a
+    /// Column of `menu_button` rows wrapped in a Dialog-styled
+    /// container. Anchored at the cursor via `popover.position(Point)`
+    /// in `view()`.
     fn menu_popup(&self) -> Element<'_, Message> {
         let item = |label: &'static str, msg: Message| -> Element<'_, Message> {
-            button::standard(label)
+            menu::menu_button(vec![text(label).into()])
                 .on_press(msg)
                 .width(Length::Fill)
                 .into()
         };
         container(
             Column::new()
-                .push(text("Menu").size(18))
-                .push(item("Go to Fleet", Message::NavigateTo(Page::Fleet)))
-                .push(item("Go to Daemon", Message::NavigateTo(Page::Daemon)))
-                .push(item("Go to Settings", Message::NavigateTo(Page::Settings)))
-                .push(item("Go to About", Message::NavigateTo(Page::About)))
-                .push(item(
-                    "Toggle sidebar  (Ctrl+B)",
-                    Message::ToggleSidebar,
-                ))
-                .push(item("Close menu", Message::CloseMenu))
-                .spacing(6)
-                .padding(16)
-                .width(Length::Fixed(280.0)),
+                .push(item("Fleet", Message::NavigateTo(Page::Fleet)))
+                .push(item("Daemon", Message::NavigateTo(Page::Daemon)))
+                .push(item("Settings", Message::NavigateTo(Page::Settings)))
+                .push(item("About", Message::NavigateTo(Page::About)))
+                .push(item("Toggle sidebar  (Ctrl+B)", Message::ToggleSidebar))
+                .spacing(0)
+                .padding(4)
+                .width(Length::Fixed(220.0)),
         )
         .class(cosmic::style::Container::Dialog)
         .into()
