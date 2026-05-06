@@ -511,10 +511,9 @@ impl cosmic::Application for WispAdmin {
                 } else {
                     self.settings = self.settings_draft.clone();
                     if decorations_changed {
-                        self.toggle_decorations_task()
-                    } else {
-                        Task::none()
+                        self.apply_decorations();
                     }
+                    Task::none()
                 }
             }
             Message::RevertSettings => {
@@ -549,11 +548,8 @@ impl cosmic::Application for WispAdmin {
                 Task::none()
             }
             Message::ApplyInitialSettings => {
-                if !self.settings.show_decorations {
-                    self.toggle_decorations_task()
-                } else {
-                    Task::none()
-                }
+                self.apply_decorations();
+                Task::none()
             }
             Message::SessionHoverEnter(id) => {
                 self.hovered_session = Some(id);
@@ -748,11 +744,16 @@ impl WispAdmin {
             .unwrap_or(Page::Fleet)
     }
 
-    fn toggle_decorations_task(&self) -> Task<Message> {
-        match self.core.main_window_id() {
-            Some(id) => cosmic::iced::runtime::window::toggle_decorations(id),
-            None => Task::none(),
-        }
+    /// Apply the persisted `show_decorations` setting to cosmic's
+    /// header_bar visibility. Toggling iced's `window::toggle_decorations`
+    /// turns out to control SERVER-side decorations (compositor-drawn
+    /// titlebar) — orthogonal to cosmic's own CLIENT-side header which
+    /// is always rendered. The visible bug was that toggling SSD on
+    /// stacked it on top of cosmic's CSD ("two top bars"). Flipping
+    /// `Core::show_headerbar` directly is what actually controls
+    /// cosmic's header rendering.
+    fn apply_decorations(&mut self) {
+        self.core.window.show_headerbar = self.settings.show_decorations;
     }
 
     /// Right-click context menu, mirroring cosmic-term's pattern: a
