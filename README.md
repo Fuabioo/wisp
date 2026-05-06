@@ -18,6 +18,26 @@ Wisp 👻 is a lightweight, background daemon that allows you to spawn "terminal
 - **Dynamic Resizing**: Automatically calculates the "minimum viable dimension" across all active clients so your UI never breaks.
 - **TUI Pause Menu**: Type `!>` quickly to pause your client interaction and selectively disconnect, leaving everyone else perfectly undisturbed.
 - **Lifecycle Management**: Spin sessions `up`, bring them `down`, or `kill` them completely via UUID.
+- **wisp-desktop**: COSMIC-native admin GUI (see below) for fleet visibility without scripting six CLI commands.
+
+## wisp-desktop
+
+A Pop!_OS COSMIC-native desktop app for administering the daemon — same role
+to `wisp` as Docker Desktop is to `docker` or Claude Desktop is to the Claude
+CLI. Live fleet view, peer table with kick/refresh, transparency + blur,
+auto-following event tape. Built with `libcosmic` (Rust + iced); lives at
+[`gui/`](gui/).
+
+![wisp-desktop screenshot](assets/wisp-desktop.png)
+
+```bash
+just gui-run        # debug build + run
+just gui-release    # optimized build (`./gui/target/release/wisp-admin`)
+```
+
+System dependencies and architecture notes are in
+[`gui/README.md`](gui/README.md) and
+[`docs/adr/0002-cosmic-admin-gui.md`](docs/adr/0002-cosmic-admin-gui.md).
 
 ## Installation
 
