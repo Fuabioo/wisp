@@ -8,7 +8,10 @@ pub fn view<'a, I>(entries: I) -> Element<'a, Message>
 where
     I: Iterator<Item = &'a EventEntry>,
 {
-    let mut col = Column::new().spacing(2).padding(8);
+    let mut col = Column::new()
+        .spacing(2)
+        .padding(8)
+        .width(Length::Fill);
     let mut count = 0;
     for entry in entries {
         col = col.push(row_view(entry));
@@ -19,7 +22,7 @@ where
         col = col.push(text("Quiet on the wire."));
     }
 
-    container(scrollable(col))
+    container(scrollable(col).width(Length::Fill))
         .height(Length::Fixed(120.0))
         .width(Length::Fill)
         .into()
@@ -39,7 +42,8 @@ fn row_view<'a>(entry: &'a EventEntry) -> Element<'a, Message> {
     Row::new()
         .push(text(entry.at.format("%H:%M:%S").to_string()).font(cosmic::font::mono()))
         .push(text(glyph))
-        .push(text(entry.message.as_str()))
+        .push(text(entry.message.as_str()).width(Length::Fill))
         .spacing(8)
+        .width(Length::Fill)
         .into()
 }
