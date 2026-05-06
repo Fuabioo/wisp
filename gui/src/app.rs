@@ -136,6 +136,7 @@ pub enum Message {
     SettingsShellChanged(String),
     SettingsHostChanged(String),
     SettingsDecorationsChanged(bool),
+    SettingsAlphaChanged(f32),
     SaveSettings,
     RevertSettings,
     ResetSettings,
@@ -502,6 +503,10 @@ impl cosmic::Application for WispAdmin {
                 self.settings_draft.show_decorations = show;
                 Task::none()
             }
+            Message::SettingsAlphaChanged(alpha) => {
+                self.settings_draft.background_alpha = alpha.clamp(0.0, 1.0);
+                Task::none()
+            }
             Message::SaveSettings => {
                 let decorations_changed =
                     self.settings.show_decorations != self.settings_draft.show_decorations;
@@ -636,17 +641,19 @@ impl cosmic::Application for WispAdmin {
         Some(element.map(cosmic::Action::App))
     }
 
-    /// Catppuccin-Mocha-tinted, transparent application background.
-    /// 0.78 alpha lets the compositor's blur (when the WM supports it)
-    /// show through the chrome — same trick `cosmic::applet::style()`
-    /// uses for translucent panel applets.
+    /// Catppuccin-Mocha-tinted application background. Alpha is read
+    /// from `settings.background_alpha`; 0.0 = fully transparent (lets
+    /// the compositor's blur shine through where supported), 1.0 =
+    /// fully opaque. Same trick `cosmic::applet::style()` uses for
+    /// translucent panel applets.
     fn style(&self) -> Option<cosmic::iced::theme::Style> {
+        let alpha = self.settings.background_alpha.clamp(0.0, 1.0);
         Some(cosmic::iced::theme::Style {
             background_color: cosmic::iced::Color::from_rgba(
                 0x1e as f32 / 255.0,
                 0x1e as f32 / 255.0,
                 0x2e as f32 / 255.0,
-                0.78,
+                alpha,
             ),
             text_color: cosmic::iced::Color::from_rgb(
                 0xcd as f32 / 255.0,

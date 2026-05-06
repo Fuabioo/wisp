@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Settings {
     /// Shell binary to run when spawning a new session. Empty string =
@@ -24,6 +24,11 @@ pub struct Settings {
     /// shortcut and right-click menu since the nav-bar toggle goes with
     /// the decorations.
     pub show_decorations: bool,
+
+    /// Application background opacity, 0.0 (fully transparent) to 1.0
+    /// (opaque). Pairs with the Catppuccin-tinted background and the
+    /// compositor's blur (when supported) for a frosted-glass feel.
+    pub background_alpha: f32,
 }
 
 impl Default for Settings {
@@ -32,6 +37,7 @@ impl Default for Settings {
             default_shell: detect_default_shell(),
             connect_host: detect_hostname(),
             show_decorations: true,
+            background_alpha: 0.78,
         }
     }
 }

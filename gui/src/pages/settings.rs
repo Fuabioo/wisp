@@ -1,7 +1,9 @@
 // Settings page — edits a `Settings` draft and persists on Save.
 
 use cosmic::iced::{Alignment, Length};
-use cosmic::widget::{button, container, text, text_input, toggler, Column, Row};
+use cosmic::widget::{
+    button, container, slider, text, text_input, toggler, Column, Row,
+};
 use cosmic::Element;
 
 use crate::app::{Message, WispAdmin};
@@ -62,6 +64,33 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
         )
         .spacing(4);
 
+    let alpha_pct = (app.settings_draft.background_alpha * 100.0).round() as u32;
+    let alpha_row = Column::new()
+        .push(text("Background opacity").size(14))
+        .push(text(
+            "0% = fully transparent (compositor blur shows through if \
+             supported), 100% = solid Catppuccin-Mocha base. Saves to \
+             settings on apply.",
+        ))
+        .push(
+            Row::new()
+                .push(
+                    slider(0.0..=1.0, app.settings_draft.background_alpha, |v| {
+                        Message::SettingsAlphaChanged(v)
+                    })
+                    .step(0.05_f32)
+                    .width(Length::Fill),
+                )
+                .push(
+                    text(format!("{}%", alpha_pct))
+                        .font(cosmic::font::mono())
+                        .width(Length::Fixed(56.0)),
+                )
+                .spacing(12)
+                .align_y(Alignment::Center),
+        )
+        .spacing(4);
+
     let save_btn: Element<'a, Message> = if dirty {
         button::suggested("Save").on_press(Message::SaveSettings).into()
     } else {
@@ -87,6 +116,7 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
             .push(shell_row)
             .push(host_row)
             .push(decorations_row)
+            .push(alpha_row)
             .push(actions)
             .spacing(20)
             .padding(24)
