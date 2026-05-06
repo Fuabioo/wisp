@@ -137,6 +137,7 @@ pub enum Message {
     SettingsHostChanged(String),
     SettingsDecorationsChanged(bool),
     SettingsAlphaChanged(f32),
+    SettingsBlurChanged(bool),
     SaveSettings,
     RevertSettings,
     ResetSettings,
@@ -507,6 +508,10 @@ impl cosmic::Application for WispAdmin {
                 self.settings_draft.background_alpha = alpha.clamp(0.0, 1.0);
                 Task::none()
             }
+            Message::SettingsBlurChanged(on) => {
+                self.settings_draft.enable_blur = on;
+                Task::none()
+            }
             Message::SaveSettings => {
                 let decorations_changed =
                     self.settings.show_decorations != self.settings_draft.show_decorations;
@@ -641,13 +646,14 @@ impl cosmic::Application for WispAdmin {
         Some(element.map(cosmic::Action::App))
     }
 
-    /// Catppuccin-Mocha-tinted application background. Alpha is read
-    /// from `settings.background_alpha`; 0.0 = fully transparent (lets
-    /// the compositor's blur shine through where supported), 1.0 =
-    /// fully opaque. Same trick `cosmic::applet::style()` uses for
-    /// translucent panel applets.
+    /// Catppuccin-Mocha-tinted application background. Alpha is gated
+    /// by `Settings::effective_alpha()` — the user's opacity slider
+    /// when blur is enabled, fully opaque otherwise. Cosmic's default
+    /// app body is `Color::TRANSPARENT` and its chrome / cards paint
+    /// opaque on top; we paint a tinted surface plus translucent cards
+    /// (see `theme::panel_style`) so the alpha actually shows through.
     fn style(&self) -> Option<cosmic::iced::theme::Style> {
-        let alpha = self.settings.background_alpha.clamp(0.0, 1.0);
+        let alpha = self.settings.effective_alpha();
         Some(cosmic::iced::theme::Style {
             background_color: cosmic::iced::Color::from_rgba(
                 0x1e as f32 / 255.0,
@@ -825,7 +831,7 @@ impl WispAdmin {
                 .padding(4)
                 .width(Length::Fixed(280.0)),
         )
-        .class(cosmic::style::Container::Dialog)
+        .style(theme::panel_style(self.settings.effective_alpha()))
         .into()
     }
 

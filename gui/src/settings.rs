@@ -29,6 +29,13 @@ pub struct Settings {
     /// (opaque). Pairs with the Catppuccin-tinted background and the
     /// compositor's blur (when supported) for a frosted-glass feel.
     pub background_alpha: f32,
+
+    /// When true, panels (cards, ribbon, popups) are painted with the
+    /// `background_alpha` so the wallpaper / compositor blur shows
+    /// through. When false, panels render fully opaque regardless of
+    /// the alpha slider — useful if your compositor doesn't blur and
+    /// you want a solid look without losing the alpha setting.
+    pub enable_blur: bool,
 }
 
 impl Default for Settings {
@@ -38,11 +45,25 @@ impl Default for Settings {
             connect_host: detect_hostname(),
             show_decorations: true,
             background_alpha: 0.78,
+            enable_blur: true,
         }
     }
 }
 
 impl Settings {
+    /// The alpha that should actually paint on cards / chrome. Equals
+    /// `background_alpha` when blur is on, 1.0 (opaque) when off.
+    pub fn effective_alpha(&self) -> f32 {
+        if self.enable_blur {
+            self.background_alpha.clamp(0.0, 1.0)
+        } else {
+            1.0
+        }
+    }
+}
+
+impl Settings {
+    /// IO helpers — load/save the settings TOML on disk.
     pub fn load() -> Self {
         let path = config_path();
         match std::fs::read_to_string(&path) {

@@ -91,6 +91,26 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
         )
         .spacing(4);
 
+    let blur_row = Column::new()
+        .push(text("Enable blur").size(14))
+        .push(text(
+            "When on, the cards/popups also paint with the opacity \
+             above so the wallpaper / compositor blur shows through. \
+             Toggle off for solid panels (good if your compositor \
+             doesn't blur transparent windows).",
+        ))
+        .push(
+            Row::new()
+                .push(
+                    toggler(app.settings_draft.enable_blur)
+                        .on_toggle(Message::SettingsBlurChanged),
+                )
+                .push(text("Blur cards and popups"))
+                .spacing(8)
+                .align_y(Alignment::Center),
+        )
+        .spacing(4);
+
     let save_btn: Element<'a, Message> = if dirty {
         button::suggested("Save").on_press(Message::SaveSettings).into()
     } else {
@@ -117,6 +137,7 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
             .push(host_row)
             .push(decorations_row)
             .push(alpha_row)
+            .push(blur_row)
             .push(actions)
             .spacing(20)
             .padding(24)

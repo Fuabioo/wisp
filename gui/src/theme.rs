@@ -53,3 +53,38 @@ pub fn ribbon_style(_theme: &cosmic::Theme) -> container::Style {
 pub fn status_color(active: bool) -> Color {
     if active { ALIVE } else { ROSE }
 }
+
+/// Catppuccin-Mocha mantle tone — slightly lighter than the window
+/// base. Used for surfaces (cards, popups) so they sit visibly above
+/// the background while still letting alpha bleed through.
+pub const MANTLE: Color = Color::from_rgb(
+    0x18 as f32 / 255.0,
+    0x18 as f32 / 255.0,
+    0x25 as f32 / 255.0,
+);
+
+/// Surface style for cards / popups. Uses Catppuccin-Mocha mantle tinted
+/// at `alpha`; pair with `Settings::effective_alpha()` so the user's
+/// opacity slider cascades through the chrome instead of being masked
+/// by opaque containers.
+pub fn panel_style(alpha: f32) -> impl Fn(&cosmic::Theme) -> container::Style + 'static {
+    let alpha = alpha.clamp(0.0, 1.0);
+    move |_theme| container::Style {
+        background: Some(cosmic::iced::Background::Color(Color {
+            r: MANTLE.r,
+            g: MANTLE.g,
+            b: MANTLE.b,
+            a: alpha,
+        })),
+        text_color: Some(Color::from_rgb(
+            0xcd as f32 / 255.0,
+            0xd6 as f32 / 255.0,
+            0xf4 as f32 / 255.0,
+        )),
+        border: cosmic::iced::Border {
+            radius: 8.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
