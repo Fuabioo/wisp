@@ -24,9 +24,9 @@ Wisp 👻 is a lightweight, background daemon that allows you to spawn "terminal
 
 A Pop!_OS COSMIC-native desktop app for administering the daemon — same role
 to `wisp` as Docker Desktop is to `docker` or Claude Desktop is to the Claude
-CLI. Live fleet view, peer table with kick/refresh, transparency + blur,
-auto-following event tape. Built with `libcosmic` (Rust + iced); lives at
-[`gui/`](gui/).
+CLI. Live fleet view, peer table with kick/refresh, system light/dark theme
+following, transparency + blur, auto-following event tape. Built with
+`libcosmic` (Rust + iced); lives at [`gui/`](gui/).
 
 ![wisp-desktop screenshot](assets/wisp-desktop.png)
 

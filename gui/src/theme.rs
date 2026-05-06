@@ -21,7 +21,7 @@ pub const DANGER: Color = Color::from_rgb(1.0, 0x6B as f32 / 255.0, 0x7A as f32 
 
 /// Container style for the inline error banner: a translucent danger-tinted
 /// fill with high-contrast text. Pair with `container(...).style(...)`.
-pub fn error_banner_style(_theme: &cosmic::Theme) -> container::Style {
+pub fn error_banner_style(theme: &cosmic::Theme) -> container::Style {
     container::Style {
         background: Some(cosmic::iced::Background::Color(Color {
             r: DANGER.r,
@@ -29,7 +29,7 @@ pub fn error_banner_style(_theme: &cosmic::Theme) -> container::Style {
             b: DANGER.b,
             a: 0.18,
         })),
-        text_color: Some(DANGER),
+        text_color: Some(theme.cosmic().on_bg_color().into()),
         ..Default::default()
     }
 }
@@ -37,13 +37,14 @@ pub fn error_banner_style(_theme: &cosmic::Theme) -> container::Style {
 /// Container style for the daemon ribbon at the top of the window — a thin
 /// strip with a subtle wisp-tinted background that survives in both light
 /// and dark COSMIC themes.
-pub fn ribbon_style(_theme: &cosmic::Theme) -> container::Style {
+pub fn ribbon_style(theme: &cosmic::Theme) -> container::Style {
+    let alpha = if theme.cosmic().is_dark { 0.08 } else { 0.14 };
     container::Style {
         background: Some(cosmic::iced::Background::Color(Color {
             r: WISP.r,
             g: WISP.g,
             b: WISP.b,
-            a: 0.08,
+            a: alpha,
         })),
         ..Default::default()
     }
@@ -54,48 +55,20 @@ pub fn status_color(active: bool) -> Color {
     if active { ALIVE } else { ROSE }
 }
 
-/// Catppuccin-Mocha mantle tone — slightly lighter than the window
-/// base. Used for surfaces (cards, popups) so they sit visibly above
-/// the background while still letting alpha bleed through.
-pub const MANTLE: Color = Color::from_rgb(
-    0x18 as f32 / 255.0,
-    0x18 as f32 / 255.0,
-    0x25 as f32 / 255.0,
-);
-
-/// Catppuccin-Mocha "Surface 0" — the low-contrast tone we use for
-/// the sidebar's right-edge border so the sidebar is delineated from
-/// the body without painting an opaque background.
-pub const SURFACE0: Color = Color::from_rgb(
-    0x31 as f32 / 255.0,
-    0x32 as f32 / 255.0,
-    0x44 as f32 / 255.0,
-);
-
-/// Catppuccin-Mocha base — used as the body tint when the user wants
-/// some app colour bleed without blur. Painting it via a wrapping
-/// container (rather than as the wgpu clear colour) avoids the
-/// transparent-surface re-paint flicker iced exhibits when you set
-/// the background_color in `Application::style()`.
-pub const BASE: Color = Color::from_rgb(
-    0x1e as f32 / 255.0,
-    0x1e as f32 / 255.0,
-    0x2e as f32 / 255.0,
-);
-
-/// Body-wrap container style: paints the Catppuccin base at the
+/// Body-wrap container style: paints the system background colour at the
 /// caller's alpha (0.0 = fully transparent, wallpaper bleed). This is
 /// the *only* place in the chrome that sets an alpha background, so
 /// the wgpu surface clear stays at `Color::TRANSPARENT` and the
 /// per-frame clear doesn't flicker against the wallpaper.
 pub fn body_tint_style(alpha: f32) -> impl Fn(&cosmic::Theme) -> container::Style + 'static {
     let alpha = alpha.clamp(0.0, 1.0);
-    move |_theme| container::Style {
+    move |theme| container::Style {
         background: if alpha > 0.0 {
+            let bg: cosmic::iced::Color = theme.cosmic().bg_color().into();
             Some(cosmic::iced::Background::Color(Color {
-                r: BASE.r,
-                g: BASE.g,
-                b: BASE.b,
+                r: bg.r,
+                g: bg.g,
+                b: bg.b,
                 a: alpha,
             }))
         } else {
@@ -110,35 +83,37 @@ pub fn body_tint_style(alpha: f32) -> impl Fn(&cosmic::Theme) -> container::Styl
 /// wallpaper. A bare container is simpler than wiring the iced
 /// `rule::Style` into cosmic's `Theme::Catalog` — at 1 px wide the
 /// distinction is invisible.
-pub fn sidebar_edge_style(_theme: &cosmic::Theme) -> container::Style {
+pub fn sidebar_edge_style(theme: &cosmic::Theme) -> container::Style {
     container::Style {
-        background: Some(cosmic::iced::Background::Color(SURFACE0)),
+        background: Some(cosmic::iced::Background::Color(
+            theme.cosmic().bg_divider().into(),
+        )),
         ..Default::default()
     }
 }
 
-/// Surface style for cards / popups. Uses Catppuccin-Mocha mantle tinted
-/// at `alpha`; pair with `Settings::effective_alpha()` so the user's
-/// opacity slider cascades through the chrome instead of being masked
-/// by opaque containers.
+/// Surface style for cards / popups. Uses the system theme's primary
+/// container colours tinted at `alpha`; pair with
+/// `Settings::effective_alpha()` so the user's opacity slider cascades
+/// through the chrome instead of being masked by opaque containers.
 pub fn panel_style(alpha: f32) -> impl Fn(&cosmic::Theme) -> container::Style + 'static {
     let alpha = alpha.clamp(0.0, 1.0);
-    move |_theme| container::Style {
-        background: Some(cosmic::iced::Background::Color(Color {
-            r: MANTLE.r,
-            g: MANTLE.g,
-            b: MANTLE.b,
-            a: alpha,
-        })),
-        text_color: Some(Color::from_rgb(
-            0xcd as f32 / 255.0,
-            0xd6 as f32 / 255.0,
-            0xf4 as f32 / 255.0,
-        )),
-        border: cosmic::iced::Border {
-            radius: 8.0.into(),
+    move |theme| {
+        let bg: cosmic::iced::Color = theme.cosmic().primary_container_color().into();
+        let on_bg: cosmic::iced::Color = theme.cosmic().on_primary_container_color().into();
+        container::Style {
+            background: Some(cosmic::iced::Background::Color(Color {
+                r: bg.r,
+                g: bg.g,
+                b: bg.b,
+                a: alpha,
+            })),
+            text_color: Some(on_bg),
+            border: cosmic::iced::Border {
+                radius: 8.0.into(),
+                ..Default::default()
+            },
             ..Default::default()
-        },
-        ..Default::default()
+        }
     }
 }

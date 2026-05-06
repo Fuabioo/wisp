@@ -117,6 +117,7 @@ Items surfaced during a codebase audit against the TODO list. Not duplicates of 
 
 - [ ] **Expose daemon version over RPC** — `cmd/root.go` already carries `Version`, `CommitSHA`, and `BuildDate` vars; the COSMIC GUI's daemon page wants them but only gets reachability + uptime today. Add `Daemon.GetVersion` RPC.
 - [x] **wisp-desktop: stop polling dead sessions** — `SessionsLoaded(Ok)` now clears `self.selected` when the selected id disappeared, and `record_error` collapses "session <id> not found" repeats with a per-id 30 s suppression window. Both verified by unit tests in `gui/src/app.rs`.
+- [x] **wisp-desktop: follow system light/dark theme** — replaced hardcoded Catppuccin Mocha colours in `gui/src/theme.rs` with derivations from the active COSMIC theme (background, dividers, primary container, ribbon tint). The app now inherits the system theme preference instead of always rendering dark.
 - [ ] **CI pipeline** — GitHub Actions workflow running `go build`, `go vet`, and the e2e harness on push. A `just test` recipe would give it a single entry point.
 - [ ] **Live PTY preview in the COSMIC GUI** — the fleet page defers a console pane (`gui/src/pages/fleet.rs`). Real-time terminal rendering in the GUI would be the killer feature.
 - [ ] **WebSocket transport** — a browser-based watcher can't speak net/rpc over a Unix socket today. A companion proxy or in-process WebSocket endpoint would open the door to web dashboards and zero-install observers.
