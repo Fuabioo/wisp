@@ -42,6 +42,10 @@ pub struct WispAdmin {
     pub hovered_session: Option<String>,
     pub hovered_peer: Option<(String, String)>,
     pub menu_open: bool,
+    /// Cursor position frozen at the moment the menu opened. Without
+    /// this the popover re-anchors on every re-render — the menu would
+    /// trail the cursor as the user tried to click an entry.
+    pub menu_anchor: Option<Point>,
 }
 
 /// Master cycle for the ghost shimmer — chosen to match the longest SMIL
@@ -226,6 +230,7 @@ impl cosmic::Application for WispAdmin {
             hovered_session: None,
             hovered_peer: None,
             menu_open: false,
+            menu_anchor: None,
         };
 
         let initial_load = Task::perform(
@@ -568,10 +573,12 @@ impl cosmic::Application for WispAdmin {
             }
             Message::OpenMenu => {
                 self.menu_open = true;
+                self.menu_anchor = CURSOR_POS.lock().ok().and_then(|g| *g);
                 Task::none()
             }
             Message::CloseMenu => {
                 self.menu_open = false;
+                self.menu_anchor = None;
                 Task::none()
             }
             Message::DismissError => {
@@ -637,21 +644,39 @@ impl cosmic::Application for WispAdmin {
             .height(Length::Fill)
             .into();
 
-        // Right-click triggers a popover popup anchored at the cursor —
-        // matching cosmic-term's pattern. The popover only renders the
-        // popup when `menu_open` is true; cosmic's own dialog rendering
-        // confirmed `modal(true)` is needed for the popup to actually
-        // hit the overlay layer.
-        let mut pop = popover(main).modal(true);
+        // Right-click triggers a popover anchored at the cursor.
+        //
+        // Two constraints worth remembering:
+        // (1) Popover's `Position::Point(p)` adds `p` to the popover's
+        //     bounds.position(), so `p` must be RELATIVE to the popover
+        //     content's top-left, not window-absolute. cosmic-term gets
+        //     this for free because its custom widget already reports
+        //     cursor in widget-local coords; ours doesn't, so we subtract
+        //     a heuristic origin (sidebar width if visible + a small
+        //     header gutter).
+        // (2) modal(true) absorbs every mouse event, blocking the
+        //     click-outside-to-dismiss flow. We rely on on_close instead,
+        //     which only fires when modal is false.
+        let mut pop = popover(main);
         if self.menu_open {
-            let anchor = CURSOR_POS
-                .lock()
-                .ok()
-                .and_then(|g| *g)
-                .unwrap_or(Point::new(120.0, 80.0));
+            let cursor = self.menu_anchor.unwrap_or(Point::new(120.0, 80.0));
+            let nav_offset = if self.core.nav_bar_active() {
+                184.0
+            } else {
+                0.0
+            };
+            let header_offset = if self.settings.show_decorations {
+                48.0
+            } else {
+                0.0
+            };
+            let relative = Point::new(
+                (cursor.x - nav_offset).max(0.0),
+                (cursor.y - header_offset).max(0.0),
+            );
             pop = pop
                 .popup(self.menu_popup())
-                .position(cosmic::widget::popover::Position::Point(anchor))
+                .position(cosmic::widget::popover::Position::Point(relative))
                 .on_close(Message::CloseMenu);
         }
         pop.into()
