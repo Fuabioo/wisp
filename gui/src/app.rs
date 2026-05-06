@@ -103,6 +103,8 @@ impl Page {
 pub struct SpawnDrawerState {
     pub open: bool,
     pub port_input: String,
+    pub shadow_dir_input: String,
+    pub env_input: String,
 }
 
 #[derive(Debug, Clone)]
@@ -136,6 +138,8 @@ pub enum Message {
     OpenSpawnDrawer,
     CloseSpawnDrawer,
     SpawnPortChanged(String),
+    SpawnShadowDirChanged(String),
+    SpawnEnvChanged(String),
     SpawnSubmit,
     SpawnDone(Result<ServerInfo, String>),
 
@@ -160,6 +164,8 @@ pub enum Message {
     SettingsAlphaChanged(f32),
     SettingsBlurChanged(bool),
     SettingsHamburgerSideChanged(crate::settings::HamburgerSide),
+    SettingsShadowDirChanged(String),
+    SettingsDefaultEnvChanged(String),
     SaveSettings,
     RevertSettings,
     ResetSettings,
@@ -387,6 +393,12 @@ impl cosmic::Application for WispAdmin {
                 if self.spawn_drawer.port_input.is_empty() {
                     self.spawn_drawer.port_input = "2222".to_string();
                 }
+                if self.spawn_drawer.shadow_dir_input.is_empty() {
+                    self.spawn_drawer.shadow_dir_input = self.settings.shadow_dir.clone();
+                }
+                if self.spawn_drawer.env_input.is_empty() {
+                    self.spawn_drawer.env_input = self.settings.default_env.clone();
+                }
                 Task::none()
             }
             Message::CloseSpawnDrawer => {
@@ -395,6 +407,14 @@ impl cosmic::Application for WispAdmin {
             }
             Message::SpawnPortChanged(port) => {
                 self.spawn_drawer.port_input = port;
+                Task::none()
+            }
+            Message::SpawnShadowDirChanged(dir) => {
+                self.spawn_drawer.shadow_dir_input = dir;
+                Task::none()
+            }
+            Message::SpawnEnvChanged(env) => {
+                self.spawn_drawer.env_input = env;
                 Task::none()
             }
             Message::SpawnSubmit => {
@@ -406,10 +426,12 @@ impl cosmic::Application for WispAdmin {
                 };
                 let backend = self.backend.clone();
                 let shell = self.settings.default_shell.clone();
+                let shadow_dir = self.spawn_drawer.shadow_dir_input.clone();
+                let env = parse_env_string(&self.spawn_drawer.env_input);
                 Task::perform(
                     async move {
                         backend
-                            .start_server(port, &shell)
+                            .start_server(port, &shell, &shadow_dir, &env)
                             .await
                             .map_err(|e| e.to_string())
                     },
@@ -419,6 +441,8 @@ impl cosmic::Application for WispAdmin {
             Message::SpawnDone(Ok(info)) => {
                 self.spawn_drawer.open = false;
                 self.spawn_drawer.port_input.clear();
+                self.spawn_drawer.shadow_dir_input.clear();
+                self.spawn_drawer.env_input.clear();
                 let id = info.id.clone();
                 let follow = self.event_tape_push(
                     EventKind::Spawn,
@@ -539,6 +563,14 @@ impl cosmic::Application for WispAdmin {
             }
             Message::SettingsHamburgerSideChanged(side) => {
                 self.settings_draft.hamburger_side = side;
+                Task::none()
+            }
+            Message::SettingsShadowDirChanged(dir) => {
+                self.settings_draft.shadow_dir = dir;
+                Task::none()
+            }
+            Message::SettingsDefaultEnvChanged(env) => {
+                self.settings_draft.default_env = env;
                 Task::none()
             }
             Message::SaveSettings => {
@@ -1126,6 +1158,17 @@ impl WispAdmin {
     }
 }
 
+/// Parses a string like "KEY1=VALUE1 KEY2=VALUE2" into a HashMap.
+fn parse_env_string(raw: &str) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    for token in raw.split_whitespace() {
+        if let Some((k, v)) = token.split_once('=') {
+            out.insert(k.to_string(), v.to_string());
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1145,7 +1188,7 @@ mod tests {
         async fn list_peers(&self, _session_id: &str) -> anyhow::Result<Vec<PeerInfo>> {
             panic!("mock: list_peers called unexpectedly")
         }
-        async fn start_server(&self, _port: u16, _shell: &str) -> anyhow::Result<ServerInfo> {
+        async fn start_server(&self, _port: u16, _shell: &str, _shadow_dir: &str, _env: &HashMap<String, String>) -> anyhow::Result<ServerInfo> {
             panic!("mock: start_server called unexpectedly")
         }
         async fn up(&self, _session_id: &str) -> anyhow::Result<()> {

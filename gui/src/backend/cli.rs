@@ -1,6 +1,7 @@
 // CliBackend — phase-1 backend that shells out to `wisp <cmd> --json`. See
 // docs/adr/0002-cosmic-admin-gui.md for the phasing rationale.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Context, Result};
@@ -165,14 +166,29 @@ impl WispBackend for CliBackend {
         self.exec_json(&["peers", session_id]).await
     }
 
-    async fn start_server(&self, port: u16, shell: &str) -> Result<ServerInfo> {
+    async fn start_server(
+        &self,
+        port: u16,
+        shell: &str,
+        shadow_dir: &str,
+        env: &HashMap<String, String>,
+    ) -> Result<ServerInfo> {
         let port_str = port.to_string();
-        let mut args: Vec<&str> = vec!["server", "--port", &port_str];
+        let mut args: Vec<String> = vec!["server".into(), "--port".into(), port_str];
         if !shell.is_empty() {
-            args.push("--shell");
-            args.push(shell);
+            args.push("--shell".into());
+            args.push(shell.to_string());
         }
-        let envelope = self.exec_action(&args).await?;
+        if !shadow_dir.is_empty() {
+            args.push("--shadow-dir".into());
+            args.push(shadow_dir.to_string());
+        }
+        for (k, v) in env {
+            args.push("--env".into());
+            args.push(format!("{}={}", k, v));
+        }
+        let str_args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let envelope = self.exec_action(&str_args).await?;
         Ok(ServerInfo {
             id: envelope
                 .id

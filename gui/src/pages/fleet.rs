@@ -432,6 +432,14 @@ fn spawn_drawer_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
                     .on_submit(|_| Message::SpawnSubmit),
             )
             .push(
+                text_input("shadow directory (optional)", &app.spawn_drawer.shadow_dir_input)
+                    .on_input(Message::SpawnShadowDirChanged),
+            )
+            .push(
+                text_input("env overrides (KEY=VALUE …)", &app.spawn_drawer.env_input)
+                    .on_input(Message::SpawnEnvChanged),
+            )
+            .push(
                 Row::new()
                     .push(button::standard("cancel").on_press(Message::CloseSpawnDrawer))
                     .push(button::suggested("spawn").on_press(Message::SpawnSubmit))

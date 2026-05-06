@@ -65,8 +65,10 @@ type ServerSession struct {
 }
 
 type Daemon struct {
-	mu      sync.Mutex
-	servers map[string]*ServerSession
+	mu        sync.Mutex
+	servers   map[string]*ServerSession
+	ShadowDir string            // Prepend to PATH for every session.
+	Env       map[string]string // Set/override env vars for every session.
 }
 
 func NewDaemon() *Daemon {
@@ -79,8 +81,10 @@ func NewDaemon() *Daemon {
 // Shell is optional — empty string falls back to the daemon's $SHELL
 // detection (zsh if unset).
 type StartServerReq struct {
-	Port  int
-	Shell string
+	Port      int
+	Shell     string
+	ShadowDir string            // Prepend this dir to PATH inside the PTY.
+	Env       map[string]string // Set/override environment variables.
 }
 
 func (d *Daemon) StartServer(req *StartServerReq, res *ServerInfo) error {
@@ -94,7 +98,23 @@ func (d *Daemon) StartServer(req *StartServerReq, res *ServerInfo) error {
 	}
 
 	id := uuid.New().String()[:8]
-	pm, err := NewPTYManager(req.Shell, func() {
+
+	// Merge per-session env overrides onto the daemon-global defaults.
+	mergedEnv := make(map[string]string, len(d.Env)+len(req.Env))
+	for k, v := range d.Env {
+		mergedEnv[k] = v
+	}
+	for k, v := range req.Env {
+		mergedEnv[k] = v
+	}
+
+	// Per-session shadow dir wins; fall back to daemon-global.
+	shadowDir := req.ShadowDir
+	if shadowDir == "" {
+		shadowDir = d.ShadowDir
+	}
+
+	pm, err := NewPTYManager(req.Shell, shadowDir, mergedEnv, func() {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		if sess, exists := d.servers[id]; exists {

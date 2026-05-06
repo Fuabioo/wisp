@@ -19,6 +19,8 @@ var daemonCmd = &cobra.Command{
 	Short: "Start the Wisp management daemon",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		d := core.NewDaemon()
+		d.ShadowDir, _ = cmd.Flags().GetString("shadow-dir")
+		d.Env = parseEnvFlags(cmd)
 		if err := rpc.Register(d); err != nil {
 			return fmt.Errorf("register rpc: %w", err)
 		}
@@ -45,5 +47,7 @@ var daemonCmd = &cobra.Command{
 }
 
 func init() {
+	daemonCmd.Flags().String("shadow-dir", "", "Directory to prepend to PATH for all sessions (shadow binaries)")
+	daemonCmd.Flags().StringSlice("env", nil, "Environment overrides for all sessions (KEY=VALUE)")
 	rootCmd.AddCommand(daemonCmd)
 }

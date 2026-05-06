@@ -114,7 +114,7 @@ func (c chanReader) Read(p []byte) (n int, err error) {
 	}
 }
 
-func NewPTYManager(shell string, onClose func()) (*PTYManager, error) {
+func NewPTYManager(shell string, shadowDir string, env map[string]string, onClose func()) (*PTYManager, error) {
 	if shell == "" {
 		shell = os.Getenv("SHELL")
 	}
@@ -122,6 +122,13 @@ func NewPTYManager(shell string, onClose func()) (*PTYManager, error) {
 		shell = "zsh"
 	}
 	c := exec.Command(shell)
+	c.Env = os.Environ()
+	if shadowDir != "" {
+		c.Env = prependPath(c.Env, shadowDir)
+	}
+	for k, v := range env {
+		c.Env = setEnv(c.Env, k, v)
+	}
 	f, err := pty.Start(c)
 	if err != nil {
 		return nil, fmt.Errorf("start pty: %w", err)
@@ -395,6 +402,31 @@ func (pm *PTYManager) updateSizeLocked() {
 		Rows: minRows,
 		Cols: minCols,
 	})
+}
+
+// prependPath inserts dir at the front of PATH in the given env slice.
+// If PATH is not present, it creates one with only dir.
+func prependPath(env []string, dir string) []string {
+	prefix := "PATH="
+	for i, e := range env {
+		if len(e) > 5 && e[:5] == prefix {
+			env[i] = prefix + dir + ":" + e[5:]
+			return env
+		}
+	}
+	return append(env, prefix+dir)
+}
+
+// setEnv sets or overrides a key=value pair in the env slice.
+func setEnv(env []string, key, value string) []string {
+	prefix := key + "="
+	for i, e := range env {
+		if len(e) > len(prefix) && e[:len(prefix)] == prefix {
+			env[i] = prefix + value
+			return env
+		}
+	}
+	return append(env, prefix+value)
 }
 
 func (pm *PTYManager) Close() {

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -65,7 +67,13 @@ pub struct PeerInfo {
 pub trait WispBackend: Send + Sync {
     async fn list_servers(&self) -> anyhow::Result<Vec<ServerInfo>>;
     async fn list_peers(&self, session_id: &str) -> anyhow::Result<Vec<PeerInfo>>;
-    async fn start_server(&self, port: u16, shell: &str) -> anyhow::Result<ServerInfo>;
+    async fn start_server(
+        &self,
+        port: u16,
+        shell: &str,
+        shadow_dir: &str,
+        env: &HashMap<String, String>,
+    ) -> anyhow::Result<ServerInfo>;
     async fn up(&self, session_id: &str) -> anyhow::Result<()>;
     async fn down(&self, session_id: &str) -> anyhow::Result<()>;
     async fn kill(&self, session_id: &str) -> anyhow::Result<()>;

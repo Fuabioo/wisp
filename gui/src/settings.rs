@@ -49,6 +49,14 @@ pub struct Settings {
 
     /// Side of the daemon ribbon the hamburger menu trigger lives on.
     pub hamburger_side: HamburgerSide,
+
+    /// Default directory to prepend to PATH for all wisp sessions
+    /// (shadow binaries). Empty = no shadowing.
+    pub shadow_dir: String,
+
+    /// Default environment overrides applied to every new session.
+    /// KEY=VALUE pairs, colon-separated in the settings file.
+    pub default_env: String,
 }
 
 impl Default for Settings {
@@ -60,6 +68,8 @@ impl Default for Settings {
             background_alpha: 0.78,
             enable_blur: true,
             hamburger_side: HamburgerSide::default(),
+            shadow_dir: String::new(),
+            default_env: String::new(),
         }
     }
 }

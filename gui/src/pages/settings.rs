@@ -115,6 +115,33 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
         )
         .spacing(4);
 
+    let shadow_dir_row = Column::new()
+        .push(text("Shadow directory").size(14))
+        .push(text(
+            "Directory to prepend to PATH inside wisp sessions. Drop \
+             guard binaries here (e.g. an 'env' wrapper) to shadow \
+             system tools for all spawned sessions. Leave blank to \
+             use the host PATH as-is.",
+        ))
+        .push(
+            text_input("/usr/local/wisp-shadows", &app.settings_draft.shadow_dir)
+                .on_input(Message::SettingsShadowDirChanged),
+        )
+        .spacing(4);
+
+    let default_env_row = Column::new()
+        .push(text("Default environment").size(14))
+        .push(text(
+            "Environment overrides applied to every new session. Enter \
+             as KEY=VALUE pairs separated by spaces (e.g. \
+             \"EDITOR=nano PAGER=less\").",
+        ))
+        .push(
+            text_input("EDITOR=nano PAGER=less", &app.settings_draft.default_env)
+                .on_input(Message::SettingsDefaultEnvChanged),
+        )
+        .spacing(4);
+
     let hamburger_row = Column::new()
         .push(text("Hamburger menu side").size(14))
         .push(text(
@@ -162,6 +189,8 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
         .push(header)
         .push(shell_row)
         .push(host_row)
+        .push(shadow_dir_row)
+        .push(default_env_row)
         .push(decorations_row)
         .push(alpha_row)
         .push(blur_row)

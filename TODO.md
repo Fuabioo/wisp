@@ -95,6 +95,7 @@ User-defined shell commands triggered by daemon events, similar to Claude Code's
 - [ ] **Authentication** — currently anyone who can reach the SSH port joins as that user. Options: per-session password, public-key allowlist, one-time tokens.
 - [ ] **Owner vs. guest permissions** for menu actions (kick, lock, configure) — `Daemon.KickPeer` RPC exists but enforcement is still TODO
 - [x] Move daemon socket to `$XDG_RUNTIME_DIR` (per-user) instead of `/tmp` (world-readable) — default sourced from `$XDG_RUNTIME_DIR`, override via `--socket` / `WISP_SOCKET`
+- [x] **Shadow directory + env overrides** — `wisp daemon --shadow-dir ~/.wisp/shadow --env KEY=VALUE` prepends a directory of guard binaries to PATH and sets environment variables for every session. Per-session overrides via `wisp server --shadow-dir` / `--env`. GUI spawn drawer and settings page both surface the fields. Shadow `env`, `printenv`, or any other binary by replacing it with a no-op or custom guard.
 - [ ] Optional connection rate limiting
 
 ## Observability
@@ -115,17 +116,12 @@ User-defined shell commands triggered by daemon events, similar to Claude Code's
 Items surfaced during a codebase audit against the TODO list. Not duplicates of the above — genuine gaps.
 
 - [ ] **Expose daemon version over RPC** — `cmd/root.go` already carries `Version`, `CommitSHA`, and `BuildDate` vars; the COSMIC GUI's daemon page wants them but only gets reachability + uptime today. Add `Daemon.GetVersion` RPC.
+- [x] **wisp-desktop: stop polling dead sessions** — `SessionsLoaded(Ok)` now clears `self.selected` when the selected id disappeared, and `record_error` collapses "session <id> not found" repeats with a per-id 30 s suppression window. Both verified by unit tests in `gui/src/app.rs`.
 - [ ] **CI pipeline** — GitHub Actions workflow running `go build`, `go vet`, and the e2e harness on push. A `just test` recipe would give it a single entry point.
 - [ ] **Live PTY preview in the COSMIC GUI** — the fleet page defers a console pane (`gui/src/pages/fleet.rs`). Real-time terminal rendering in the GUI would be the killer feature.
 - [ ] **WebSocket transport** — a browser-based watcher can't speak net/rpc over a Unix socket today. A companion proxy or in-process WebSocket endpoint would open the door to web dashboards and zero-install observers.
 - [ ] **Session labels** — `wisp server --label "deploy-staging"` for freeform tagging, filterable in `wisp ps` and the GUI. Lighter than named sessions; pairs well with the sessions list.
 - [ ] **Export recordings as asciicast v2** — beyond raw byte capture, produce shareable `.cast` files that asciinema.org and `agg` can render.
+- [ ] **Rename GUI to `wisp-desktop`** — purely cosmetic. The marketable name is `wisp-desktop` (cf. Docker Desktop / Claude Desktop) but the crate is still `wisp-admin` internally. Touches `gui/Cargo.toml` (crate + bin name), the `[[bin]]` `name`, justfile recipe names (`gui-*` → maybe `desktop-*`), `APP_ID = "dev.fabiomora.WispAdmin"`, the `.desktop` filename under `gui/data/desktop/`, references in ADR 0002 and `gui/README.md`. README already uses the new name; the rest is non-urgent.
 - [ ] **SSH public-key allowlist per session** — refinement of the Authentication TODO: read from `~/.ssh/authorized_keys` or a per-session temp file so only known keys can attach.
 - [ ] **`just` tab completion** — generate shell completions for all 20+ just recipes so new contributors discover them faster.
-- [ ] **Rename GUI to `wisp-desktop`** — purely cosmetic. The marketable name is `wisp-desktop` (cf. Docker Desktop / Claude Desktop) but the crate is still `wisp-admin` internally. Touches `gui/Cargo.toml` (crate + bin name), the `[[bin]]` `name`, justfile recipe names (`gui-*` → maybe `desktop-*`), `APP_ID = "dev.fabiomora.WispAdmin"`, the `.desktop` filename under `gui/data/desktop/`, references in ADR 0002 and `gui/README.md`. README already uses the new name; the rest is non-urgent.
-- [ ] **wisp-desktop: stop polling dead sessions** — after a session disappears (killed in the GUI *or* externally via the CLI), the 1 Hz poll keeps issuing `list_peers(<dead-id>)` and surfaces "session \<id\> not found" errors that respawn the moment the user dismisses them. Repro confirmed in the logs:
-  ```
-  WARN wisp_admin::backend::cli: wisp returned error envelope
-       args=["peers", "dcc971b8"] msg=session dcc971b8 not found
-  ```
-  fires every second indefinitely. Root cause is in `Message::SessionsLoaded(Ok)` (`gui/src/app.rs`): we reconcile `self.sessions` to the new list but never re-check `self.selected`, so if the selected id was removed externally it stays pinned to a dead id and `refresh_peers` keeps firing against it. Fix: in `SessionsLoaded(Ok)`, after `self.sessions = sessions`, if `self.selected` is `Some(id)` and `id` is not in `self.sessions`, clear it (or reassign to `self.sessions.first()`) — same logic that already lives in `SessionActionDone(Kill)`. Bonus: have `record_error` collapse "session \<id\> not found" against a per-id last-seen timestamp so even if the underlying issue resurfaces, the banner doesn't keep redrawing.

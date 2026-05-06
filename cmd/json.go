@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -11,6 +12,22 @@ import (
 // stdout in place of the styled human output. Used by the COSMIC admin GUI's
 // CliBackend (see docs/adr/0002-cosmic-admin-gui.md).
 var jsonOutput bool
+
+// parseEnvFlags reads the --env flag (repeatable, KEY=VALUE) from the given
+// cobra command and returns a map. Used by both the daemon (global defaults)
+// and server (per-session overrides) subcommands.
+func parseEnvFlags(cmd *cobra.Command) map[string]string {
+	raw, _ := cmd.Flags().GetStringSlice("env")
+	out := make(map[string]string, len(raw))
+	for _, kv := range raw {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
 
 // jsonResult is the envelope returned by action commands (server, up, down,
 // kill, kick). Read commands (ps, peers) emit their typed payload directly.
