@@ -33,6 +33,7 @@ var daemonCmd = &cobra.Command{
 		go rpc.Accept(l)
 
 		fmt.Println(accentStyle.Render("\n" + core.GhostArt + "\n"))
+		fmt.Printf("%s %s %s\n", Version, CommitSHA, BuildDate)
 		log.Printf("Wisp daemon started on %s", socketPath)
 
 		done := make(chan os.Signal, 1)
