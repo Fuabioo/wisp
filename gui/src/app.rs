@@ -533,6 +533,8 @@ impl cosmic::Application for WispAdmin {
                 if let Some(entity) = target {
                     self.nav.activate(entity);
                 }
+                self.menu_open = false;
+                self.menu_anchor = None;
                 Task::none()
             }
             Message::NavSelected(id) => {
@@ -542,6 +544,8 @@ impl cosmic::Application for WispAdmin {
             Message::ToggleSidebar => {
                 let active = self.core.nav_bar_active();
                 self.core_mut().nav_bar_set_toggled(!active);
+                self.menu_open = false;
+                self.menu_anchor = None;
                 Task::none()
             }
             Message::ApplyInitialSettings => {
@@ -707,6 +711,13 @@ impl cosmic::Application for WispAdmin {
                 modifiers,
                 ..
             }) if modifiers.control() && c.as_str() == "b" => Some(Message::ToggleSidebar),
+            // ESC dismisses the right-click menu. CloseMenu is a no-op
+            // when the menu is already closed, so the global key
+            // listener can fire it unconditionally.
+            cosmic::iced::Event::Keyboard(keyboard::Event::KeyPressed {
+                key: keyboard::Key::Named(keyboard::key::Named::Escape),
+                ..
+            }) => Some(Message::CloseMenu),
             _ => None,
         });
 
@@ -762,9 +773,10 @@ impl WispAdmin {
                 .push(item("Settings", Message::NavigateTo(Page::Settings)))
                 .push(item("About", Message::NavigateTo(Page::About)))
                 .push(item("Toggle sidebar  (Ctrl+B)", Message::ToggleSidebar))
+                .push(item("Close menu  (Esc)", Message::CloseMenu))
                 .spacing(0)
                 .padding(4)
-                .width(Length::Fixed(220.0)),
+                .width(Length::Fixed(280.0)),
         )
         .class(cosmic::style::Container::Dialog)
         .into()
