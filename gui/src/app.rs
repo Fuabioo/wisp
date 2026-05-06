@@ -621,13 +621,17 @@ impl cosmic::Application for WispAdmin {
         Task::none()
     }
 
-    /// Override the default nav-bar render. Two changes from cosmic's
+    /// Override the default nav-bar render. Three changes from cosmic's
     /// default:
     /// (1) Halve the max width — the default 280 is generous for our
     ///     four short page labels. Hard-cap at 160.
     /// (2) Park the animated ghost at the top of the sidebar so the
     ///     brand mark lives in always-visible chrome instead of buried
     ///     in the per-session detail spine.
+    /// (3) Force a fully-transparent background and append a 1 px
+    ///     low-contrast Catppuccin seam on the right edge — the rail
+    ///     itself shows the wallpaper through, and the seam is the
+    ///     only visible delineation from the body.
     fn nav_bar(&self) -> Option<Element<'_, cosmic::Action<Self::Message>>> {
         if !self.core().nav_bar_active() {
             return None;
@@ -650,44 +654,41 @@ impl cosmic::Application for WispAdmin {
             .width(Length::Shrink)
             .into();
 
-        let mut wrapper = container(combined)
+        let mut content = container(combined)
+            .style(theme::sidebar_style)
             .width(Length::Shrink)
             .height(Length::Fill);
         if !self.core().is_condensed() {
-            wrapper = wrapper.max_width(160);
+            content = content.max_width(160);
         }
-        let element: Element<'_, Message> = wrapper.into();
-        Some(element.map(cosmic::Action::App))
+
+        let edge: Element<'_, Message> = container(text(""))
+            .style(theme::sidebar_edge_style)
+            .width(Length::Fixed(1.0))
+            .height(Length::Fill)
+            .into();
+
+        let with_edge: Element<'_, Message> = Row::new()
+            .push(content)
+            .push(edge)
+            .height(Length::Fill)
+            .into();
+
+        Some(with_edge.map(cosmic::Action::App))
     }
 
-    /// Catppuccin-Mocha-tinted application background. Alpha is gated
-    /// by `Settings::effective_alpha()` — the user's opacity slider
-    /// when blur is enabled, fully opaque otherwise. Wallpaper / blur
-    /// only shows through because we set `core.window.content_container
-    /// = false` in `init()`, which suppresses cosmic's default opaque
-    /// body wrapper. Cards and the right-click popup intentionally stay
-    /// solid (cosmic-term's pattern) for readability.
-    fn style(&self) -> Option<cosmic::iced::theme::Style> {
-        let alpha = self.settings.effective_alpha();
-        Some(cosmic::iced::theme::Style {
-            background_color: cosmic::iced::Color::from_rgba(
-                0x1e as f32 / 255.0,
-                0x1e as f32 / 255.0,
-                0x2e as f32 / 255.0,
-                alpha,
-            ),
-            text_color: cosmic::iced::Color::from_rgb(
-                0xcd as f32 / 255.0,
-                0xd6 as f32 / 255.0,
-                0xf4 as f32 / 255.0,
-            ),
-            icon_color: cosmic::iced::Color::from_rgb(
-                0xcd as f32 / 255.0,
-                0xd6 as f32 / 255.0,
-                0xf4 as f32 / 255.0,
-            ),
-        })
-    }
+    /// `Application::style` is intentionally NOT overridden. cosmic's
+    /// default returns `Color::TRANSPARENT` for the wgpu surface clear
+    /// when the window isn't maximised — the same path cosmic-term
+    /// takes — which keeps the per-frame clear free of any visible
+    /// pixels. The Catppuccin tint the user sees comes from the
+    /// `theme::body_tint_style` container that wraps the body in
+    /// `view()`, painted exactly once per frame instead of as a
+    /// repeated clear-colour. Overriding `style()` to return an alpha
+    /// background_color, even at the same colour, produced a visible
+    /// per-update flash because every state change forced iced to
+    /// re-clear the surface to that alpha-blended value before
+    /// re-drawing the chrome on top.
 
     fn view(&self) -> Element<'_, Self::Message> {
         let page = self.active_page();
@@ -704,8 +705,14 @@ impl cosmic::Application for WispAdmin {
             layout = layout.push(banner);
         }
 
+        let body_tinted: Element<'_, Self::Message> = container(body)
+            .style(theme::body_tint_style(self.settings.effective_alpha()))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into();
+
         let main: Element<'_, Self::Message> = layout
-            .push(container(body).width(Length::Fill).height(Length::Fill))
+            .push(body_tinted)
             .spacing(0)
             .width(Length::Fill)
             .height(Length::Fill)
@@ -791,14 +798,17 @@ impl cosmic::Application for WispAdmin {
         let tick = cosmic::iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick);
 
         // Only run the ghost animation when the ghost is actually
-        // on-screen — i.e. the sidebar (where a small ghost lives in
-        // chrome) is open, or the active page renders one inline.
-        // Skipping the periodic state mutation also kills its
-        // associated re-render, so the transparent surface isn't
-        // flashing every 320 ms behind a static UI.
-        let ghost_visible = self.core.nav_bar_active()
-            || matches!(self.active_page(), Page::About)
-            || (matches!(self.active_page(), Page::Fleet) && self.sessions.is_empty());
+        // on-screen AND the surface is fully opaque. iced exhibits a
+        // visible per-redraw flicker against a transparent compositor
+        // surface, so when the user has opted into transparency we
+        // hold the ghost still and accept a static brand mark in
+        // exchange for a calm window — the user explicitly called
+        // out the flickering as nausea-inducing.
+        let opaque = !self.settings.enable_blur || self.settings.background_alpha >= 0.999;
+        let ghost_visible = opaque
+            && (self.core.nav_bar_active()
+                || matches!(self.active_page(), Page::About)
+                || (matches!(self.active_page(), Page::Fleet) && self.sessions.is_empty()));
         if ghost_visible {
             let anim = cosmic::iced::time::every(Duration::from_millis(ANIM_TICK_MS))
                 .map(|_| Message::AnimTick);
