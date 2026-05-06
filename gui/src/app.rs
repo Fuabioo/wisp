@@ -53,11 +53,13 @@ pub struct WispAdmin {
 /// sub-animations complete at least one cycle inside it.
 /// `ghost_art::view` decomposes this into per-attribute timings.
 const ANIM_CYCLE_SECS: f32 = 11.0;
-/// Anim heartbeat rate. Each tick advances `anim_phase`, but the field
-/// only mutates when the rendered frame would actually change — so iced
-/// re-renders ≈ ghost_art::FRAMES / ANIM_CYCLE_SECS times per second
-/// (~6 Hz at 64 frames over 11 s) regardless of how fast we tick.
-const ANIM_TICK_MS: u64 = 100;
+/// Anim heartbeat rate. With a transparent surface every redraw is
+/// observable as a flash because iced clears the surface before
+/// repainting, so we tick slowly: ANIM_CYCLE_SECS / FRAMES (64) ≈
+/// 172 ms is the minimum useful interval. At 320 ms (~3 Hz) one frame
+/// in two is duplicated, which is plenty for the slow gradient breathing
+/// the ghost performs and keeps re-render flicker out of view.
+const ANIM_TICK_MS: u64 = 320;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -247,8 +249,8 @@ impl cosmic::Application for WispAdmin {
             |result| act(Message::SessionsLoaded(result)),
         );
         // Self-message that fires after the framework has set up the
-        // window, so we can apply the persisted decorations state (if
-        // off) without racing main_window_id().
+        // window, so we can apply the persisted decorations + blur state
+        // without racing main_window_id().
         let apply_initial = Task::done(act(Message::ApplyInitialSettings));
 
         (app, Task::batch([initial_load, apply_initial]))
@@ -522,6 +524,7 @@ impl cosmic::Application for WispAdmin {
             Message::SaveSettings => {
                 let decorations_changed =
                     self.settings.show_decorations != self.settings_draft.show_decorations;
+                let blur_changed = self.settings.enable_blur != self.settings_draft.enable_blur;
                 if let Err(err) = self.settings_draft.save() {
                     self.record_error(format!("could not save settings: {}", err));
                     Task::none()
@@ -530,7 +533,11 @@ impl cosmic::Application for WispAdmin {
                     if decorations_changed {
                         self.apply_decorations();
                     }
-                    Task::none()
+                    if blur_changed {
+                        self.apply_blur()
+                    } else {
+                        Task::none()
+                    }
                 }
             }
             Message::RevertSettings => {
@@ -566,7 +573,7 @@ impl cosmic::Application for WispAdmin {
             }
             Message::ApplyInitialSettings => {
                 self.apply_decorations();
-                Task::none()
+                self.apply_blur()
             }
             Message::SessionHoverEnter(id) => {
                 self.hovered_session = Some(id);
@@ -783,9 +790,15 @@ impl cosmic::Application for WispAdmin {
 
         let tick = cosmic::iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick);
 
-        // Only run the ghost animation when a page that actually shows
-        // the ghost is active. Settings / Daemon get no anim wakeups.
-        let ghost_visible = matches!(self.active_page(), Page::Fleet | Page::About);
+        // Only run the ghost animation when the ghost is actually
+        // on-screen — i.e. the sidebar (where a small ghost lives in
+        // chrome) is open, or the active page renders one inline.
+        // Skipping the periodic state mutation also kills its
+        // associated re-render, so the transparent surface isn't
+        // flashing every 320 ms behind a static UI.
+        let ghost_visible = self.core.nav_bar_active()
+            || matches!(self.active_page(), Page::About)
+            || (matches!(self.active_page(), Page::Fleet) && self.sessions.is_empty());
         if ghost_visible {
             let anim = cosmic::iced::time::every(Duration::from_millis(ANIM_TICK_MS))
                 .map(|_| Message::AnimTick);
@@ -814,6 +827,25 @@ impl WispAdmin {
     /// cosmic's header rendering.
     fn apply_decorations(&mut self) {
         self.core.window.show_headerbar = self.settings.show_decorations;
+    }
+
+    /// Request blur from the compositor for the main window. Toggles
+    /// the `ext_background_effect_v1` Wayland protocol via iced's
+    /// `enable_blur` / `disable_blur` Tasks — without this the surface
+    /// just shows the unblurred wallpaper through the alpha. cosmic-comp
+    /// is the only compositor in our target environment that supports
+    /// the protocol; on others the call is a harmless no-op (the iced
+    /// winit backend silently drops `BlurSurface` actions when the
+    /// global isn't bound).
+    fn apply_blur(&self) -> Task<Message> {
+        let Some(id) = self.core.main_window_id() else {
+            return Task::none();
+        };
+        if self.settings.enable_blur {
+            cosmic::iced::window::enable_blur(id)
+        } else {
+            cosmic::iced::window::disable_blur(id)
+        }
     }
 
     /// Right-click context menu, mirroring cosmic-term's pattern: a
