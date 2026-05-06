@@ -145,7 +145,6 @@ pub enum Message {
     ResetSettings,
 
     NavigateTo(Page),
-    NavSelected(nav_bar::Id),
     ToggleSidebar,
     ApplyInitialSettings,
 
@@ -560,10 +559,6 @@ impl cosmic::Application for WispAdmin {
                 self.menu_anchor = None;
                 Task::none()
             }
-            Message::NavSelected(id) => {
-                self.nav.activate(id);
-                Task::none()
-            }
             Message::ToggleSidebar => {
                 let active = self.core.nav_bar_active();
                 self.core_mut().nav_bar_set_toggled(!active);
@@ -621,22 +616,20 @@ impl cosmic::Application for WispAdmin {
         Task::none()
     }
 
-    /// Override the default nav-bar render. Three changes from cosmic's
-    /// default:
-    /// (1) Halve the max width — the default 280 is generous for our
-    ///     four short page labels. Hard-cap at 160.
-    /// (2) Park the animated ghost at the top of the sidebar so the
-    ///     brand mark lives in always-visible chrome instead of buried
-    ///     in the per-session detail spine.
-    /// (3) Force a fully-transparent background and append a 1 px
-    ///     low-contrast Catppuccin seam on the right edge — the rail
-    ///     itself shows the wallpaper through, and the seam is the
-    ///     only visible delineation from the body.
+    /// Override the default nav-bar render. cosmic's `nav_bar` widget
+    /// wraps itself in an outer container that paints
+    /// `cosmic.primary.base` as a solid background — there's no public
+    /// hook to override that container's class, so wrapping it in a
+    /// transparent container of our own doesn't help, the inner one
+    /// still paints. To get a truly transparent rail we replace the
+    /// widget with a hand-rolled Column of `nav_button` buttons whose
+    /// styling is alpha-aware and selection-aware. The brand ghost
+    /// lives at the top of the rail; a 1 px Surface 0 seam delineates
+    /// the rail from the body on the right.
     fn nav_bar(&self) -> Option<Element<'_, cosmic::Action<Self::Message>>> {
         if !self.core().nav_bar_active() {
             return None;
         }
-        let nav_model = self.nav_model()?;
 
         let ghost: Element<'_, Message> = container(
             crate::components::ghost_art::view::<Message>(96.0, self.anim_phase),
@@ -645,16 +638,13 @@ impl cosmic::Application for WispAdmin {
         .center_x(Length::Fill)
         .into();
 
-        let nav_widget = cosmic::widget::nav_bar(nav_model, Message::NavSelected);
+        let active = self.active_page();
+        let mut items = Column::new().spacing(2).padding([4, 8]);
+        for page in [Page::Fleet, Page::Daemon, Page::Settings, Page::About] {
+            items = items.push(nav_item(page, page == active));
+        }
 
-        let combined: Element<'_, Message> = Column::new()
-            .push(ghost)
-            .push(nav_widget)
-            .height(Length::Fill)
-            .width(Length::Shrink)
-            .into();
-
-        let mut content = container(combined)
+        let mut content = container(Column::new().push(ghost).push(items).height(Length::Fill))
             .style(theme::sidebar_style)
             .width(Length::Shrink)
             .height(Length::Fill);
@@ -699,24 +689,28 @@ impl cosmic::Application for WispAdmin {
             Page::About => crate::pages::about::view(self),
         };
 
-        let mut layout = Column::new().push(crate::components::daemon_ribbon::view(self));
+        let mut inner = Column::new().push(crate::components::daemon_ribbon::view(self));
 
         if let Some(banner) = self.error_banner() {
-            layout = layout.push(banner);
+            inner = inner.push(banner);
         }
 
-        let body_tinted: Element<'_, Self::Message> = container(body)
-            .style(theme::body_tint_style(self.settings.effective_alpha()))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into();
-
-        let main: Element<'_, Self::Message> = layout
-            .push(body_tinted)
-            .spacing(0)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into();
+        // The Catppuccin tint is applied as a single container that
+        // wraps the daemon ribbon and the body together. This way the
+        // top bar shares the same alpha-tinted base as the body — the
+        // rail (rendered separately by cosmic via nav_bar()) is the
+        // only chrome that stays fully transparent.
+        let main: Element<'_, Self::Message> = container(
+            inner
+                .push(container(body).width(Length::Fill).height(Length::Fill))
+                .spacing(0)
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .style(theme::body_tint_style(self.settings.effective_alpha()))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into();
 
         // Right-click triggers a popover anchored at the cursor.
         //
@@ -817,6 +811,19 @@ impl cosmic::Application for WispAdmin {
             Subscription::batch([tick, focus_and_keys])
         }
     }
+}
+
+/// Sidebar entry — transparent button with a leading dot when active.
+/// Hand-rolled because cosmic's `nav_bar` widget hard-codes a solid
+/// `primary.base` background container that we can't override; this
+/// keeps the rail flat against the wallpaper.
+fn nav_item<'a>(page: Page, selected: bool) -> Element<'a, Message> {
+    let marker = if selected { "● " } else { "  " };
+    let label = format!("{}{}", marker, page.label());
+    button::text(label)
+        .on_press(Message::NavigateTo(page))
+        .width(Length::Fill)
+        .into()
 }
 
 impl WispAdmin {

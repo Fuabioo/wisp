@@ -51,14 +51,12 @@ impl Default for Settings {
 }
 
 impl Settings {
-    /// The alpha that should actually paint on cards / chrome. Equals
-    /// `background_alpha` when blur is on, 1.0 (opaque) when off.
+    /// The alpha that should actually paint on the body chrome.
+    /// Always honours `background_alpha` regardless of the blur
+    /// toggle — blur is an opt-in compositor effect *on top of*
+    /// transparency, not the gate that activates it.
     pub fn effective_alpha(&self) -> f32 {
-        if self.enable_blur {
-            self.background_alpha.clamp(0.0, 1.0)
-        } else {
-            1.0
-        }
+        self.background_alpha.clamp(0.0, 1.0)
     }
 }
 

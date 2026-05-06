@@ -92,12 +92,15 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
         .spacing(4);
 
     let blur_row = Column::new()
-        .push(text("Enable blur").size(14))
+        .push(text("Enable compositor blur").size(14))
         .push(text(
-            "When on, the cards/popups also paint with the opacity \
-             above so the wallpaper / compositor blur shows through. \
-             Toggle off for solid panels (good if your compositor \
-             doesn't blur transparent windows).",
+            "Asks the compositor to blur whatever shows through the \
+             transparent surface (wallpaper, windows behind). The \
+             opacity slider above controls transparency on its own — \
+             blur is just an additive effect. Requires \
+             `ext_background_effect_v1` (cosmic-comp ships it; some \
+             builds don't bind the global yet, in which case this \
+             toggle is a no-op).",
         ))
         .push(
             Row::new()
@@ -105,7 +108,7 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
                     toggler(app.settings_draft.enable_blur)
                         .on_toggle(Message::SettingsBlurChanged),
                 )
-                .push(text("Blur cards and popups"))
+                .push(text("Blur compositor surface behind window"))
                 .spacing(8)
                 .align_y(Alignment::Center),
         )
