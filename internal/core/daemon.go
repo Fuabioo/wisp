@@ -3,6 +3,8 @@ package core
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 
@@ -141,10 +143,31 @@ func (d *Daemon) StartServer(req *StartServerReq, res *ServerInfo) error {
 	return nil
 }
 
+func hostKeyPath(port int) (string, error) {
+	dataDir := os.Getenv("XDG_DATA_HOME")
+	if dataDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve home dir for host keys: %w", err)
+		}
+		dataDir = filepath.Join(home, ".local", "share")
+	}
+	sshDir := filepath.Join(dataDir, "wisp", "ssh")
+	if err := os.MkdirAll(sshDir, 0700); err != nil {
+		return "", fmt.Errorf("create host key dir %s: %w", sshDir, err)
+	}
+	return filepath.Join(sshDir, fmt.Sprintf("term_info_%d_ed25519", port)), nil
+}
+
 func (d *Daemon) createSshServer(port int, id string, pm *PTYManager) (*ssh.Server, error) {
+	keyPath, err := hostKeyPath(port)
+	if err != nil {
+		return nil, err
+	}
+
 	s, err := wish.NewServer(
 		wish.WithAddress(fmt.Sprintf(":%d", port)),
-		wish.WithHostKeyPath(fmt.Sprintf(".ssh/term_info_%d_ed25519", port)),
+		wish.WithHostKeyPath(keyPath),
 		wish.WithMiddleware(
 			func(h ssh.Handler) ssh.Handler {
 				return func(s ssh.Session) {
