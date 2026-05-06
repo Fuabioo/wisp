@@ -621,58 +621,16 @@ impl cosmic::Application for WispAdmin {
         Task::none()
     }
 
-    /// Override the default nav-bar render. cosmic's `nav_bar` widget
-    /// wraps itself in an outer container that paints
-    /// `cosmic.primary.base` as a solid background — there's no public
-    /// hook to override that container's class, so wrapping it in a
-    /// transparent container of our own doesn't help, the inner one
-    /// still paints. To get a truly transparent rail we replace the
-    /// widget with a hand-rolled Column of `nav_button` buttons whose
-    /// styling is alpha-aware and selection-aware. The brand ghost
-    /// lives at the top of the rail; a 1 px Surface 0 seam delineates
-    /// the rail from the body on the right.
+    /// We render the sidebar inline inside `view()` rather than going
+    /// through cosmic's `nav_bar()` slot. The framework wraps anything
+    /// returned from `nav_bar()` in a container with non-zero padding
+    /// on the left/right/bottom — and that padding gutter shows the
+    /// wallpaper because no widget of ours paints it (we have no
+    /// surface-level fill since `style()` returns None). Letting the
+    /// rail be part of our view tree keeps the single `body_tint_style`
+    /// wrapper covering the whole window edge-to-edge.
     fn nav_bar(&self) -> Option<Element<'_, cosmic::Action<Self::Message>>> {
-        if !self.core().nav_bar_active() {
-            return None;
-        }
-
-        let ghost: Element<'_, Message> = container(
-            crate::components::ghost_art::view::<Message>(96.0, self.anim_phase),
-        )
-        .padding([12, 0, 8, 0])
-        .center_x(Length::Fill)
-        .into();
-
-        let active = self.active_page();
-        let mut items = Column::new().spacing(2).padding([4, 8]);
-        for page in [Page::Fleet, Page::Daemon, Page::Settings, Page::About] {
-            items = items.push(nav_item(page, page == active));
-        }
-
-        // Sidebar shares the body's Catppuccin alpha tint — the user
-        // wants the rail to read as part of the same translucent
-        // chrome rather than as a wallpaper-cutout.
-        let mut content = container(Column::new().push(ghost).push(items).height(Length::Fill))
-            .style(theme::body_tint_style(self.settings.effective_alpha()))
-            .width(Length::Shrink)
-            .height(Length::Fill);
-        if !self.core().is_condensed() {
-            content = content.max_width(160);
-        }
-
-        let edge: Element<'_, Message> = container(text(""))
-            .style(theme::sidebar_edge_style)
-            .width(Length::Fixed(1.0))
-            .height(Length::Fill)
-            .into();
-
-        let with_edge: Element<'_, Message> = Row::new()
-            .push(content)
-            .push(edge)
-            .height(Length::Fill)
-            .into();
-
-        Some(with_edge.map(cosmic::Action::App))
+        None
     }
 
     /// `Application::style` is intentionally NOT overridden. cosmic's
@@ -690,11 +648,59 @@ impl cosmic::Application for WispAdmin {
 
     fn view(&self) -> Element<'_, Self::Message> {
         let page = self.active_page();
-        let body: Element<'_, Self::Message> = match page {
+        let body_page: Element<'_, Self::Message> = match page {
             Page::Fleet => crate::pages::fleet::view(self),
             Page::Daemon => crate::pages::daemon::view(self),
             Page::Settings => crate::pages::settings::view(self),
             Page::About => crate::pages::about::view(self),
+        };
+
+        // Inline sidebar — replaces the cosmic `nav_bar()` slot so the
+        // body_tint container can cover the whole window without a
+        // gutter showing wallpaper. The rail is gated on
+        // `nav_bar_active()` so Ctrl+B / the hamburger menu still toggle
+        // visibility.
+        let body_with_rail: Element<'_, Self::Message> = if self.core().nav_bar_active() {
+            let ghost: Element<'_, Self::Message> = container(
+                crate::components::ghost_art::view::<Self::Message>(96.0, self.anim_phase),
+            )
+            .padding([12, 0, 8, 0])
+            .center_x(Length::Fill)
+            .into();
+
+            let mut items = Column::new().spacing(2).padding([4, 8]);
+            for p in [Page::Fleet, Page::Daemon, Page::Settings, Page::About] {
+                items = items.push(nav_item(p, p == page));
+            }
+
+            let rail: Element<'_, Self::Message> = container(
+                Column::new()
+                    .push(ghost)
+                    .push(items)
+                    .height(Length::Fill),
+            )
+            .width(Length::Fixed(160.0))
+            .height(Length::Fill)
+            .into();
+
+            let edge: Element<'_, Self::Message> = container(text(""))
+                .style(theme::sidebar_edge_style)
+                .width(Length::Fixed(1.0))
+                .height(Length::Fill)
+                .into();
+
+            Row::new()
+                .push(rail)
+                .push(edge)
+                .push(container(body_page).width(Length::Fill).height(Length::Fill))
+                .height(Length::Fill)
+                .width(Length::Fill)
+                .into()
+        } else {
+            container(body_page)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
         };
 
         let mut inner = Column::new().push(crate::components::daemon_ribbon::view(self));
@@ -704,13 +710,12 @@ impl cosmic::Application for WispAdmin {
         }
 
         // The Catppuccin tint is applied as a single container that
-        // wraps the daemon ribbon and the body together. This way the
-        // top bar shares the same alpha-tinted base as the body — the
-        // rail (rendered separately by cosmic via nav_bar()) is the
-        // only chrome that stays fully transparent.
+        // wraps the daemon ribbon, sidebar, and body together — covers
+        // the whole window edge-to-edge so no gutter shows the
+        // wallpaper unbidden.
         let main: Element<'_, Self::Message> = container(
             inner
-                .push(container(body).width(Length::Fill).height(Length::Fill))
+                .push(body_with_rail)
                 .spacing(0)
                 .width(Length::Fill)
                 .height(Length::Fill),

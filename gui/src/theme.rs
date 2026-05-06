@@ -105,17 +105,6 @@ pub fn body_tint_style(alpha: f32) -> impl Fn(&cosmic::Theme) -> container::Styl
     }
 }
 
-/// Sidebar container style: always fully transparent so the wallpaper
-/// shows through. A single low-contrast right-edge separator is drawn
-/// by appending a `vertical_rule` to the sidebar contents — this
-/// container itself paints nothing.
-pub fn sidebar_style(_theme: &cosmic::Theme) -> container::Style {
-    container::Style {
-        background: None,
-        ..Default::default()
-    }
-}
-
 /// Style for the 1-pixel container we slot at the right edge of the
 /// sidebar so the rail has a visible (but quiet) seam against the
 /// wallpaper. A bare container is simpler than wiring the iced

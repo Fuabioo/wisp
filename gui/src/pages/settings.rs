@@ -2,7 +2,7 @@
 
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget::{
-    button, container, slider, text, text_input, toggler, Column, Row,
+    button, container, scrollable, slider, text, text_input, toggler, Column, Row,
 };
 use cosmic::Element;
 
@@ -158,24 +158,23 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
         .spacing(8)
         .align_y(Alignment::Center);
 
-    container(
-        Column::new()
-            .push(header)
-            .push(shell_row)
-            .push(host_row)
-            .push(decorations_row)
-            .push(alpha_row)
-            .push(blur_row)
-            .push(hamburger_row)
-            .push(actions)
-            .spacing(20)
-            .padding(24)
-            .max_width(640.0),
-    )
-    .center_x(Length::Fill)
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
+    let form = Column::new()
+        .push(header)
+        .push(shell_row)
+        .push(host_row)
+        .push(decorations_row)
+        .push(alpha_row)
+        .push(blur_row)
+        .push(hamburger_row)
+        .push(actions)
+        .spacing(20)
+        .padding(24)
+        .max_width(640.0);
+
+    scrollable(container(form).center_x(Length::Fill).width(Length::Fill))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
 }
 
 fn side_button<'a>(
