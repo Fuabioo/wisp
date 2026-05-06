@@ -186,8 +186,15 @@ impl cosmic::Application for WispAdmin {
         &mut self.core
     }
 
-    fn init(core: Core, _flags: Self::Flags) -> (Self, Task<Self::Message>) {
+    fn init(mut core: Core, _flags: Self::Flags) -> (Self, Task<Self::Message>) {
         tracing::info!(app_id = Self::APP_ID, "WispAdmin init");
+        // Critical for transparency: cosmic's framework otherwise wraps
+        // our view in an opaque container painted at cosmic.background.
+        // base, masking the alpha we set in `Application::style()`. With
+        // this off, the body shows the window's clear-color (and the
+        // wallpaper / compositor blur behind it). Same flag cosmic-term
+        // sets at src/main.rs:1424.
+        core.window.content_container = false;
         let backend: Arc<dyn WispBackend> = Arc::new(CliBackend::new());
         let settings = Settings::load();
         tracing::info!(
@@ -648,10 +655,11 @@ impl cosmic::Application for WispAdmin {
 
     /// Catppuccin-Mocha-tinted application background. Alpha is gated
     /// by `Settings::effective_alpha()` — the user's opacity slider
-    /// when blur is enabled, fully opaque otherwise. Cosmic's default
-    /// app body is `Color::TRANSPARENT` and its chrome / cards paint
-    /// opaque on top; we paint a tinted surface plus translucent cards
-    /// (see `theme::panel_style`) so the alpha actually shows through.
+    /// when blur is enabled, fully opaque otherwise. Wallpaper / blur
+    /// only shows through because we set `core.window.content_container
+    /// = false` in `init()`, which suppresses cosmic's default opaque
+    /// body wrapper. Cards and the right-click popup intentionally stay
+    /// solid (cosmic-term's pattern) for readability.
     fn style(&self) -> Option<cosmic::iced::theme::Style> {
         let alpha = self.settings.effective_alpha();
         Some(cosmic::iced::theme::Style {
@@ -831,7 +839,7 @@ impl WispAdmin {
                 .padding(4)
                 .width(Length::Fixed(280.0)),
         )
-        .style(theme::panel_style(self.settings.effective_alpha()))
+        .class(cosmic::style::Container::Dialog)
         .into()
     }
 

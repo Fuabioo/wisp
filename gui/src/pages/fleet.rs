@@ -66,7 +66,7 @@ fn rail_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
     }
 
     container(scrollable(col))
-        .style(theme::panel_style(app.settings.effective_alpha()))
+        .class(cosmic::style::Container::Background)
         .height(Length::Fill)
         .width(Length::Fill)
         .into()
@@ -234,7 +234,7 @@ fn connect_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, 
             .padding(8)
             .align_y(Alignment::Center),
     )
-    .style(theme::panel_style(app.settings.effective_alpha()))
+    .class(cosmic::style::Container::Card)
     .width(Length::Fill)
     .into()
 }
@@ -250,7 +250,7 @@ fn peers_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Me
                 .spacing(4)
                 .padding(8),
         )
-        .style(theme::panel_style(app.settings.effective_alpha()))
+        .class(cosmic::style::Container::Card)
         .width(Length::Fill)
         .into();
     }
@@ -313,7 +313,7 @@ fn peers_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, Me
             .spacing(8)
             .padding(8),
     )
-    .style(theme::panel_style(app.settings.effective_alpha()))
+    .class(cosmic::style::Container::Card)
     .width(Length::Fill)
     .into()
 }
@@ -438,7 +438,7 @@ fn spawn_drawer_view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
             .padding(24)
             .width(Length::Fill),
     )
-    .style(theme::panel_style(app.settings.effective_alpha()))
+    .class(cosmic::style::Container::Card)
     .width(Length::Fill)
     .height(Length::Fill)
     .into()
