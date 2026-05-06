@@ -1,11 +1,20 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use cosmic::app::{Core, Task};
+use cosmic::iced::widget::scrollable as iced_scrollable;
 use cosmic::iced::{event, keyboard, mouse, window, Length, Point, Subscription};
 use cosmic::widget::{button, container, menu, nav_bar, popover, text, Column, Row};
 use cosmic::Element;
+
+/// Stable Id for the event-tape scrollable. Used by the "follow
+/// logs" plumbing so we can issue programmatic `scroll_to` Tasks.
+/// `iced_widget::scrollable::Id` itself is private (re-exported only
+/// through use), so we go through `iced::core::widget::Id` which is
+/// the public alias and what `scrollable::scroll_to` accepts.
+pub static EVENT_TAPE_SCROLL: LazyLock<cosmic::iced::core::widget::Id> =
+    LazyLock::new(cosmic::iced::core::widget::Id::unique);
 
 /// Last known cursor position, updated on every CursorMoved event from
 /// the iced subscription. Read at view-time when we need to anchor the
@@ -46,6 +55,12 @@ pub struct WispAdmin {
     /// this the popover re-anchors on every re-render — the menu would
     /// trail the cursor as the user tried to click an entry.
     pub menu_anchor: Option<Point>,
+    /// Whether the event tape is auto-scrolling to the most recent
+    /// entry. Toggled to `false` when the user scrolls up away from
+    /// the end; the "follow logs" button surfaces while this is
+    /// false. Re-enabled either when the user scrolls back to the
+    /// bottom or hits the follow button.
+    pub event_tape_following: bool,
 }
 
 /// Master cycle for the ghost shimmer — chosen to match the longest SMIL
@@ -157,6 +172,9 @@ pub enum Message {
     OpenMenu,
     CloseMenu,
 
+    EventTapeScrolled(iced_scrollable::Viewport),
+    EventTapeFollow,
+
     DismissError,
 }
 
@@ -242,6 +260,7 @@ impl cosmic::Application for WispAdmin {
             hovered_peer: None,
             menu_open: false,
             menu_anchor: None,
+            event_tape_following: true,
         };
 
         let initial_load = Task::perform(
@@ -307,8 +326,7 @@ impl cosmic::Application for WispAdmin {
             }
             Message::SessionsLoaded(Err(err)) => {
                 self.daemon_reachable = false;
-                self.record_error(err);
-                Task::none()
+                self.record_error(err)
             }
             Message::PeersLoaded(id, Ok(peers)) => {
                 if self.peers.get(&id).map(|p| p == &peers).unwrap_or(false) {
@@ -343,15 +361,13 @@ impl cosmic::Application for WispAdmin {
                 }
                 self.peers.insert(id, peers);
 
+                let mut follow = Task::none();
                 for (kind, msg) in events {
-                    self.event_tape_push(kind, msg);
+                    follow = self.event_tape_push(kind, msg);
                 }
-                Task::none()
+                follow
             }
-            Message::PeersLoaded(_, Err(err)) => {
-                self.record_error(err);
-                Task::none()
-            }
+            Message::PeersLoaded(_, Err(err)) => self.record_error(err),
             Message::OpenSpawnDrawer => {
                 self.spawn_drawer.open = true;
                 if self.spawn_drawer.port_input.is_empty() {
@@ -369,11 +385,10 @@ impl cosmic::Application for WispAdmin {
             }
             Message::SpawnSubmit => {
                 let Ok(port) = self.spawn_drawer.port_input.parse::<u16>() else {
-                    self.record_error(format!(
+                    return self.record_error(format!(
                         "'{}' is not a valid port",
                         self.spawn_drawer.port_input
                     ));
-                    return Task::none();
                 };
                 let backend = self.backend.clone();
                 let shell = self.settings.default_shell.clone();
@@ -391,18 +406,15 @@ impl cosmic::Application for WispAdmin {
                 self.spawn_drawer.open = false;
                 self.spawn_drawer.port_input.clear();
                 let id = info.id.clone();
-                self.event_tape_push(
+                let follow = self.event_tape_push(
                     EventKind::Spawn,
                     format!("spawned session {} on :{}", info.id, info.port),
                 );
                 self.sessions.push(info);
                 self.selected = Some(id.clone());
-                self.refresh_peers(id)
+                Task::batch([follow, self.refresh_peers(id)])
             }
-            Message::SpawnDone(Err(err)) => {
-                self.record_error(err);
-                Task::none()
-            }
+            Message::SpawnDone(Err(err)) => self.record_error(err),
             Message::UpSession(id) => self.dispatch_session_action(SessionAction::Up, id),
             Message::DownSession(id) => self.dispatch_session_action(SessionAction::Down, id),
             Message::AskKill(id) => {
@@ -424,7 +436,7 @@ impl cosmic::Application for WispAdmin {
                     SessionAction::Kill => (EventKind::Kill, "killed"),
                 };
                 let short = id[..id.len().min(8)].to_string();
-                self.event_tape_push(kind, format!("{} session {}", verb, short));
+                let follow = self.event_tape_push(kind, format!("{} session {}", verb, short));
                 if matches!(action, SessionAction::Kill) {
                     self.sessions.retain(|s| s.id != id);
                     self.peers.remove(&id);
@@ -434,12 +446,9 @@ impl cosmic::Application for WispAdmin {
                         self.selected = self.sessions.first().map(|s| s.id.clone());
                     }
                 }
-                self.poll()
+                Task::batch([follow, self.poll()])
             }
-            Message::SessionActionDone(_, _, Err(err)) => {
-                self.record_error(err);
-                Task::none()
-            }
+            Message::SessionActionDone(_, _, Err(err)) => self.record_error(err),
             Message::SelectPeer(session_id, client_id) => {
                 if self.selected_peers.get(&session_id) == Some(&client_id) {
                     self.selected_peers.remove(&session_id);
@@ -466,16 +475,13 @@ impl cosmic::Application for WispAdmin {
                 )
             }
             Message::KickDone(session_id, client_id, Ok(())) => {
-                self.event_tape_push(
+                let follow = self.event_tape_push(
                     EventKind::Detach,
                     format!("kicked {} from {}", client_id, session_id),
                 );
-                self.refresh_peers(session_id)
+                Task::batch([follow, self.refresh_peers(session_id)])
             }
-            Message::KickDone(_, _, Err(err)) => {
-                self.record_error(err);
-                Task::none()
-            }
+            Message::KickDone(_, _, Err(err)) => self.record_error(err),
             Message::RefreshSession(session_id) => {
                 let backend = self.backend.clone();
                 let id_for_call = session_id.clone();
@@ -494,13 +500,9 @@ impl cosmic::Application for WispAdmin {
                 self.event_tape_push(
                     EventKind::Spawn,
                     format!("refreshed TUI for {}", short),
-                );
-                Task::none()
+                )
             }
-            Message::RefreshDone(_, Err(err)) => {
-                self.record_error(err);
-                Task::none()
-            }
+            Message::RefreshDone(_, Err(err)) => self.record_error(err),
             Message::SettingsShellChanged(shell) => {
                 self.settings_draft.default_shell = shell;
                 Task::none()
@@ -530,18 +532,16 @@ impl cosmic::Application for WispAdmin {
                     self.settings.show_decorations != self.settings_draft.show_decorations;
                 let blur_changed = self.settings.enable_blur != self.settings_draft.enable_blur;
                 if let Err(err) = self.settings_draft.save() {
-                    self.record_error(format!("could not save settings: {}", err));
-                    Task::none()
+                    return self.record_error(format!("could not save settings: {}", err));
+                }
+                self.settings = self.settings_draft.clone();
+                if decorations_changed {
+                    self.apply_decorations();
+                }
+                if blur_changed {
+                    self.apply_blur()
                 } else {
-                    self.settings = self.settings_draft.clone();
-                    if decorations_changed {
-                        self.apply_decorations();
-                    }
-                    if blur_changed {
-                        self.apply_blur()
-                    } else {
-                        Task::none()
-                    }
+                    Task::none()
                 }
             }
             Message::RevertSettings => {
@@ -608,6 +608,26 @@ impl cosmic::Application for WispAdmin {
             Message::DismissError => {
                 self.last_error = None;
                 Task::none()
+            }
+            Message::EventTapeScrolled(viewport) => {
+                // Within ~24 px of the bottom counts as "at the end" —
+                // re-engage follow mode. Strictly checking == 0 misses
+                // the case where the user scrolls all the way down but
+                // the offset rounds to a non-zero pixel value.
+                let bounds = viewport.bounds();
+                let content = viewport.content_bounds();
+                let offset = viewport.absolute_offset();
+                let max_y = (content.height - bounds.height).max(0.0);
+                let from_bottom = (max_y - offset.y).max(0.0);
+                let next = from_bottom < 24.0;
+                if next != self.event_tape_following {
+                    self.event_tape_following = next;
+                }
+                Task::none()
+            }
+            Message::EventTapeFollow => {
+                self.event_tape_following = true;
+                self.scroll_tape_to_end()
             }
         }
     }
@@ -981,22 +1001,30 @@ impl WispAdmin {
                 format!("session {} disappeared", short)
             })
             .collect();
+        // Discard the follow-tape Task — `diff_and_record` is called
+        // from `SessionsLoaded(Ok)` which already issues a follow via
+        // its subsequent `refresh_peers` -> `PeersLoaded` cycle. One
+        // missed scroll here doesn't compound; the next event push
+        // catches us back up to the bottom.
         for msg in disappeared {
-            self.event_tape_push(EventKind::Kill, msg);
+            let _ = self.event_tape_push(EventKind::Kill, msg);
         }
     }
 
-    fn record_error(&mut self, err: String) {
+    fn record_error(&mut self, err: String) -> Task<Message> {
         // Suppress duplicate-error spam: only push to the tape if this is a
         // different error than the one already showing. Dismissing the
         // banner clears `last_error`, so the next failure cycle re-records.
-        if self.last_error.as_ref() != Some(&err) {
-            self.event_tape_push(EventKind::Error, err.clone());
-        }
+        let follow = if self.last_error.as_ref() != Some(&err) {
+            self.event_tape_push(EventKind::Error, err.clone())
+        } else {
+            Task::none()
+        };
         self.last_error = Some(err);
+        follow
     }
 
-    pub fn event_tape_push(&mut self, kind: EventKind, message: String) {
+    pub fn event_tape_push(&mut self, kind: EventKind, message: String) -> Task<Message> {
         self.event_tape.push(EventEntry {
             at: chrono::Utc::now(),
             kind,
@@ -1006,6 +1034,24 @@ impl WispAdmin {
             let drop = self.event_tape.len() - 200;
             self.event_tape.drain(0..drop);
         }
+        if self.event_tape_following {
+            self.scroll_tape_to_end()
+        } else {
+            Task::none()
+        }
+    }
+
+    /// Issues a `scroll_to` Task pinned at y = f32::MAX (clamped to
+    /// the actual content height by the runtime) so the tape lands at
+    /// its newest entry.
+    fn scroll_tape_to_end(&self) -> Task<Message> {
+        iced_scrollable::scroll_to(
+            EVENT_TAPE_SCROLL.clone(),
+            iced_scrollable::AbsoluteOffset {
+                x: Some(0.0),
+                y: Some(f32::MAX),
+            },
+        )
     }
 
     pub fn peer_count(&self, session_id: &str) -> usize {

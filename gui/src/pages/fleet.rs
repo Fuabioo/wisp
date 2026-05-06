@@ -17,7 +17,10 @@ use crate::theme;
 pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
     let rail = rail_view(app);
     let spine = spine_view(app);
-    let tape = event_tape::view(app.event_tape.iter().rev().take(40).rev());
+    let tape = event_tape::view(
+        app.event_tape.iter().rev().take(40).rev(),
+        app.event_tape_following,
+    );
 
     Column::new()
         .push(
