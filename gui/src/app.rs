@@ -140,6 +140,7 @@ pub enum Message {
     SettingsDecorationsChanged(bool),
     SettingsAlphaChanged(f32),
     SettingsBlurChanged(bool),
+    SettingsHamburgerSideChanged(crate::settings::HamburgerSide),
     SaveSettings,
     RevertSettings,
     ResetSettings,
@@ -520,6 +521,10 @@ impl cosmic::Application for WispAdmin {
                 self.settings_draft.enable_blur = on;
                 Task::none()
             }
+            Message::SettingsHamburgerSideChanged(side) => {
+                self.settings_draft.hamburger_side = side;
+                Task::none()
+            }
             Message::SaveSettings => {
                 let decorations_changed =
                     self.settings.show_decorations != self.settings_draft.show_decorations;
@@ -644,8 +649,11 @@ impl cosmic::Application for WispAdmin {
             items = items.push(nav_item(page, page == active));
         }
 
+        // Sidebar shares the body's Catppuccin alpha tint — the user
+        // wants the rail to read as part of the same translucent
+        // chrome rather than as a wallpaper-cutout.
         let mut content = container(Column::new().push(ghost).push(items).height(Length::Fill))
-            .style(theme::sidebar_style)
+            .style(theme::body_tint_style(self.settings.effective_alpha()))
             .width(Length::Shrink)
             .height(Length::Fill);
         if !self.core().is_condensed() {
@@ -856,8 +864,14 @@ impl WispAdmin {
     /// global isn't bound).
     fn apply_blur(&self) -> Task<Message> {
         let Some(id) = self.core.main_window_id() else {
+            tracing::warn!("apply_blur: no main_window_id; blur request dropped");
             return Task::none();
         };
+        tracing::info!(
+            window_id = ?id,
+            enabled = self.settings.enable_blur,
+            "apply_blur: dispatching ext_background_effect_v1 task"
+        );
         if self.settings.enable_blur {
             cosmic::iced::window::enable_blur(id)
         } else {

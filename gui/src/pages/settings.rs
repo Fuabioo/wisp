@@ -7,6 +7,7 @@ use cosmic::widget::{
 use cosmic::Element;
 
 use crate::app::{Message, WispAdmin};
+use crate::settings::HamburgerSide;
 
 pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
     let dirty = app.settings_draft != app.settings;
@@ -114,6 +115,30 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
         )
         .spacing(4);
 
+    let hamburger_row = Column::new()
+        .push(text("Hamburger menu side").size(14))
+        .push(text(
+            "Which side of the daemon ribbon the menu trigger lives on. \
+             Useful when running with decorations off — the menu is the \
+             backup access path to nav and Settings.",
+        ))
+        .push(
+            Row::new()
+                .push(side_button(
+                    "Left",
+                    app.settings_draft.hamburger_side == HamburgerSide::Left,
+                    HamburgerSide::Left,
+                ))
+                .push(side_button(
+                    "Right",
+                    app.settings_draft.hamburger_side == HamburgerSide::Right,
+                    HamburgerSide::Right,
+                ))
+                .spacing(8)
+                .align_y(Alignment::Center),
+        )
+        .spacing(4);
+
     let save_btn: Element<'a, Message> = if dirty {
         button::suggested("Save").on_press(Message::SaveSettings).into()
     } else {
@@ -141,6 +166,7 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
             .push(decorations_row)
             .push(alpha_row)
             .push(blur_row)
+            .push(hamburger_row)
             .push(actions)
             .spacing(20)
             .padding(24)
@@ -150,4 +176,17 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
     .width(Length::Fill)
     .height(Length::Fill)
     .into()
+}
+
+fn side_button<'a>(
+    label: &'static str,
+    selected: bool,
+    side: HamburgerSide,
+) -> Element<'a, Message> {
+    let btn = if selected {
+        button::suggested(label)
+    } else {
+        button::standard(label)
+    };
+    btn.on_press(Message::SettingsHamburgerSideChanged(side)).into()
 }

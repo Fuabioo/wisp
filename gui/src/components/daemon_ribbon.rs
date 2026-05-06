@@ -4,6 +4,7 @@ use cosmic::Element;
 
 use crate::app::{Message, WispAdmin};
 use crate::components::util;
+use crate::settings::HamburgerSide;
 use crate::theme;
 
 pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
@@ -46,19 +47,27 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
             .into()
     };
 
-    container(
-        Row::new()
-            .push(text("●").class(dot_color))
-            .push(text(format!(" {}", status)))
-            .push(text("  ·  "))
-            .push(text(stats).font(cosmic::font::mono()))
-            .push(container(text("")).width(Length::Fill))
+    let info_row = Row::new()
+        .push(text("●").class(dot_color))
+        .push(text(format!(" {}", status)))
+        .push(text("  ·  "))
+        .push(text(stats).font(cosmic::font::mono()))
+        .spacing(0)
+        .align_y(Alignment::Center);
+
+    let row = match app.settings.hamburger_side {
+        HamburgerSide::Left => Row::new()
             .push(menu_btn)
-            .spacing(0)
-            .padding([4, 8])
-            .align_y(Alignment::Center),
-    )
-    .style(theme::ribbon_style)
-    .width(Length::Fill)
-    .into()
+            .push(info_row)
+            .push(container(text("")).width(Length::Fill)),
+        HamburgerSide::Right => Row::new()
+            .push(info_row)
+            .push(container(text("")).width(Length::Fill))
+            .push(menu_btn),
+    };
+
+    container(row.spacing(8).padding([4, 8]).align_y(Alignment::Center))
+        .style(theme::ribbon_style)
+        .width(Length::Fill)
+        .into()
 }

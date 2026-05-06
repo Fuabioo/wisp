@@ -5,6 +5,16 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+/// Which side of the daemon ribbon the hamburger / right-click menu
+/// trigger lives on. Persisted to settings TOML; the daemon ribbon
+/// reads it at render time.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum HamburgerSide {
+    Left,
+    #[default]
+    Right,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Settings {
@@ -30,12 +40,15 @@ pub struct Settings {
     /// compositor's blur (when supported) for a frosted-glass feel.
     pub background_alpha: f32,
 
-    /// When true, panels (cards, ribbon, popups) are painted with the
-    /// `background_alpha` so the wallpaper / compositor blur shows
-    /// through. When false, panels render fully opaque regardless of
-    /// the alpha slider — useful if your compositor doesn't blur and
-    /// you want a solid look without losing the alpha setting.
+    /// Whether to ask the compositor to blur whatever shows through
+    /// the transparent surface (wallpaper, windows behind). Independent
+    /// of `background_alpha` — opacity always paints, blur is just an
+    /// additive effect requested via the `ext_background_effect_v1`
+    /// Wayland protocol.
     pub enable_blur: bool,
+
+    /// Side of the daemon ribbon the hamburger menu trigger lives on.
+    pub hamburger_side: HamburgerSide,
 }
 
 impl Default for Settings {
@@ -46,6 +59,7 @@ impl Default for Settings {
             show_decorations: true,
             background_alpha: 0.78,
             enable_blur: true,
+            hamburger_side: HamburgerSide::default(),
         }
     }
 }
