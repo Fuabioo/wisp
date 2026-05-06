@@ -597,29 +597,68 @@ impl cosmic::Application for WispAdmin {
         Task::none()
     }
 
-    /// Override the default nav-bar render to halve the max width — the
-    /// default 280 is generous for our four short page labels. Hard-cap at
-    /// 160 so the sidebar feels compact but still legible.
-    ///
-    /// Cosmic's internal `Action::NavBar` is private, so we wire activation
-    /// to our own `Message::NavSelected` and lift the resulting Element
-    /// into `cosmic::Action::App(...)`. The framework's `on_nav_select`
-    /// trait method won't fire for clicks here — we handle activation in
-    /// `update()` instead.
+    /// Override the default nav-bar render. Two changes from cosmic's
+    /// default:
+    /// (1) Halve the max width — the default 280 is generous for our
+    ///     four short page labels. Hard-cap at 160.
+    /// (2) Park the animated ghost at the top of the sidebar so the
+    ///     brand mark lives in always-visible chrome instead of buried
+    ///     in the per-session detail spine.
     fn nav_bar(&self) -> Option<Element<'_, cosmic::Action<Self::Message>>> {
         if !self.core().nav_bar_active() {
             return None;
         }
         let nav_model = self.nav_model()?;
-        let mut nav = cosmic::widget::nav_bar(nav_model, Message::NavSelected)
-            .into_container()
+
+        let ghost: Element<'_, Message> = container(
+            crate::components::ghost_art::view::<Message>(96.0, self.anim_phase),
+        )
+        .padding([12, 0, 8, 0])
+        .center_x(Length::Fill)
+        .into();
+
+        let nav_widget = cosmic::widget::nav_bar(nav_model, Message::NavSelected);
+
+        let combined: Element<'_, Message> = Column::new()
+            .push(ghost)
+            .push(nav_widget)
+            .height(Length::Fill)
+            .width(Length::Shrink)
+            .into();
+
+        let mut wrapper = container(combined)
             .width(Length::Shrink)
             .height(Length::Fill);
         if !self.core().is_condensed() {
-            nav = nav.max_width(160);
+            wrapper = wrapper.max_width(160);
         }
-        let element: Element<'_, Message> = nav.into();
+        let element: Element<'_, Message> = wrapper.into();
         Some(element.map(cosmic::Action::App))
+    }
+
+    /// Catppuccin-Mocha-tinted, transparent application background.
+    /// 0.78 alpha lets the compositor's blur (when the WM supports it)
+    /// show through the chrome — same trick `cosmic::applet::style()`
+    /// uses for translucent panel applets.
+    fn style(&self) -> Option<cosmic::iced::theme::Style> {
+        Some(cosmic::iced::theme::Style {
+            background_color: cosmic::iced::Color::from_rgba(
+                0x1e as f32 / 255.0,
+                0x1e as f32 / 255.0,
+                0x2e as f32 / 255.0,
+                0.78,
+            ),
+            text_color: cosmic::iced::Color::from_rgb(
+                0xcd as f32 / 255.0,
+                0xd6 as f32 / 255.0,
+                0xf4 as f32 / 255.0,
+            ),
+            icon_color: cosmic::iced::Color::from_rgb(
+                0xcd as f32 / 255.0,
+                0xd6 as f32 / 255.0,
+                0xf4 as f32 / 255.0,
+            ),
+        })
     }
 
     fn view(&self) -> Element<'_, Self::Message> {

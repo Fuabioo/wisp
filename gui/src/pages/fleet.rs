@@ -195,19 +195,18 @@ fn header_view<'a>(app: &'a WispAdmin, session: &'a ServerInfo) -> Element<'a, M
             .into()
     };
 
-    let top_row = Row::new()
-        .push(ghost_art::view::<Message>(96.0, app.anim_phase))
-        .push(container(text("")).width(Length::Fill))
-        .push(action_area)
-        .align_y(Alignment::Center);
-
-    Column::new()
-        .push(top_row)
+    let title_row = Row::new()
         .push(
             text(format!("session · {}", session.short_id()))
                 .size(20)
                 .font(cosmic::font::mono()),
         )
+        .push(container(text("")).width(Length::Fill))
+        .push(action_area)
+        .align_y(Alignment::Center);
+
+    Column::new()
+        .push(title_row)
         .push(
             Row::new()
                 .push(text(format!("port :{}", session.port)).font(cosmic::font::mono()))
