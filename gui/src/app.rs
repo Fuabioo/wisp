@@ -391,7 +391,8 @@ impl cosmic::Application for WispAdmin {
             Message::OpenSpawnDrawer => {
                 self.spawn_drawer.open = true;
                 if self.spawn_drawer.port_input.is_empty() {
-                    self.spawn_drawer.port_input = "2222".to_string();
+                    let next = self.sessions.iter().map(|s| s.port).max().map(|p| p + 1).unwrap_or(2222);
+                    self.spawn_drawer.port_input = next.to_string();
                 }
                 if self.spawn_drawer.shadow_dir_input.is_empty() {
                     self.spawn_drawer.shadow_dir_input = self.settings.shadow_dir.clone();
@@ -440,7 +441,7 @@ impl cosmic::Application for WispAdmin {
             }
             Message::SpawnDone(Ok(info)) => {
                 self.spawn_drawer.open = false;
-                self.spawn_drawer.port_input.clear();
+                self.spawn_drawer.port_input = (info.port.saturating_add(1)).to_string();
                 self.spawn_drawer.shadow_dir_input.clear();
                 self.spawn_drawer.env_input.clear();
                 let id = info.id.clone();
