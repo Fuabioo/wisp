@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/ssh"
@@ -81,6 +82,15 @@ type PTYManager struct {
 	lastRows uint16
 	lastCols uint16
 	tail     *tailBuffer
+
+	bytesOut atomic.Uint64
+	bytesIn  atomic.Uint64
+}
+
+// SessionStats is a snapshot of per-session bandwidth consumption.
+type SessionStats struct {
+	BytesIn  uint64
+	BytesOut uint64
 }
 
 type chanReader struct {
@@ -180,7 +190,9 @@ func (pm *PTYManager) broadcast() {
 
 		var dead []ssh.Session
 		for _, s := range sessions {
-			if _, err := s.Write(buf[:n]); err != nil {
+			nw, err := s.Write(buf[:n])
+			pm.bytesOut.Add(uint64(nw))
+			if err != nil {
 				dead = append(dead, s)
 			}
 		}
@@ -250,6 +262,15 @@ func (pm *PTYManager) Tail() string {
 	return pm.tail.snapshot()
 }
 
+// Stats returns a snapshot of the current bandwidth counters. Safe to call
+// from any goroutine.
+func (pm *PTYManager) Stats() SessionStats {
+	return SessionStats{
+		BytesIn:  pm.bytesIn.Load(),
+		BytesOut: pm.bytesOut.Load(),
+	}
+}
+
 // RefreshAll perturbs the PTY size by +1 then back to the original to
 // generate a SIGWINCH on the foreground process. TUIs like claude-code
 // repaint their full UI on resize, so this gives a peer who attached
@@ -311,7 +332,9 @@ func (pm *PTYManager) HandleSession(s ssh.Session, clientID string) {
 	}()
 
 	writeByte := func(b byte) bool {
-		if _, err := pm.file.Write([]byte{b}); err != nil {
+		nw, err := pm.file.Write([]byte{b})
+		pm.bytesIn.Add(uint64(nw))
+		if err != nil {
 			log.Printf("pty write failed for %s: %v", clientID, err)
 			return false
 		}

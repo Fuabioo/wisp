@@ -370,3 +370,17 @@ func (d *Daemon) GetTail(req *TailReq, res *string) error {
 	*res = sess.PTY.Tail()
 	return nil
 }
+
+// GetSessionStats returns the current bandwidth counters (bytes in/out)
+// for the given session. Uses a plain string request (session ID) for
+// compatibility with net/rpc.
+func (d *Daemon) GetSessionStats(req *string, res *SessionStats) error {
+	d.mu.Lock()
+	sess, exists := d.servers[*req]
+	d.mu.Unlock()
+	if !exists {
+		return fmt.Errorf("session %s not found", *req)
+	}
+	*res = sess.PTY.Stats()
+	return nil
+}
