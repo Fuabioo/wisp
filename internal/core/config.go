@@ -52,7 +52,7 @@ func DefaultConfig() Config {
 			},
 		},
 		StatusBar: StatusBarConfig{
-			Enabled:    true,
+			Enabled:    false,
 			Position:   "bottom",
 			Suggestion: "Type !> for pause menu",
 		},
