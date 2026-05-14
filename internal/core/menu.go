@@ -24,6 +24,7 @@ const (
 	actionResume
 	actionDisconnect
 	actionShowPeers
+	actionToggleStatusBar
 )
 
 type menuItem struct {
@@ -36,27 +37,34 @@ type MenuModel struct {
 	clientID string
 	peersFn  func() []PeerInfo
 
-	state    viewState
-	items    []menuItem
-	cursor   int
-	choice   string
-	peers    []PeerInfo
-	peersErr string
+	state       viewState
+	items       []menuItem
+	cursor      int
+	choice      string
+	peers       []PeerInfo
+	peersErr    string
+	statusBarOn bool
+	toggleFn    func() bool
 }
 
 // RunMenu runs the pause menu over an SSH session. peersFn is called lazily
 // each time the user opens the peer list — pass a snapshot function (like
-// PTYManager.Peers) so the menu always shows current state. width/height are
-// the client's PTY window dimensions; bubbletea v2 needs them explicitly when
-// the output isn't a *os.File TTY.
-func RunMenu(s ssh.Session, input io.Reader, clientID string, width, height int, peersFn func() []PeerInfo) (string, error) {
+// PTYManager.Peers) so the menu always shows current state. toggleFn is
+// invoked when the user selects "Toggle status bar" and must return the
+// new enabled state. statusBarOn controls the initial checkmark state.
+// width/height are the client's PTY window dimensions; bubbletea v2 needs
+// them explicitly when the output isn't a *os.File TTY.
+func RunMenu(s ssh.Session, input io.Reader, clientID string, width, height int, peersFn func() []PeerInfo, toggleFn func() bool, statusBarOn bool) (string, error) {
 	m := MenuModel{
-		session:  s,
-		clientID: clientID,
-		peersFn:  peersFn,
+		session:     s,
+		clientID:    clientID,
+		peersFn:     peersFn,
+		statusBarOn: statusBarOn,
+		toggleFn:    toggleFn,
 		items: []menuItem{
 			{label: "Resume", action: actionResume},
 			{label: "List peers", action: actionShowPeers},
+			{label: "Toggle status bar", action: actionToggleStatusBar},
 			{label: "Disconnect", action: actionDisconnect},
 		},
 	}
@@ -131,6 +139,11 @@ func (m MenuModel) activate() (tea.Model, tea.Cmd) {
 		}
 		m.state = viewPeerList
 		return m, nil
+	case actionToggleStatusBar:
+		if m.toggleFn != nil {
+			m.statusBarOn = m.toggleFn()
+		}
+		return m, nil
 	}
 	return m, nil
 }
@@ -173,7 +186,11 @@ func (m MenuModel) renderMenu() string {
 		if m.cursor == i {
 			cursor = ">"
 		}
-		fmt.Fprintf(&b, "%s %s\n", cursor, item.label)
+		prefix := "  "
+		if item.action == actionToggleStatusBar && m.statusBarOn {
+			prefix = "✓ "
+		}
+		fmt.Fprintf(&b, "%s%s%s\n", cursor, prefix, item.label)
 	}
 	b.WriteString("\nPress j/k to move, enter to select, esc to return to session.\n")
 	return b.String()

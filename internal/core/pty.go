@@ -85,6 +85,12 @@ type PTYManager struct {
 
 	bytesOut atomic.Uint64
 	bytesIn  atomic.Uint64
+
+	port       int
+	statusBar  bool
+	statusPos  string
+	statusText string
+	cfg        Config
 }
 
 // SessionStats is a snapshot of per-session bandwidth consumption.
@@ -124,7 +130,7 @@ func (c chanReader) Read(p []byte) (n int, err error) {
 	}
 }
 
-func NewPTYManager(shell string, shadowDir string, env map[string]string, onClose func()) (*PTYManager, error) {
+func NewPTYManager(shell string, shadowDir string, env map[string]string, onClose func(), port int, cfg Config) (*PTYManager, error) {
 	if shell == "" {
 		shell = os.Getenv("SHELL")
 	}
@@ -145,11 +151,16 @@ func NewPTYManager(shell string, shadowDir string, env map[string]string, onClos
 	}
 
 	pm := &PTYManager{
-		file:    f,
-		cmd:     c,
-		socks:   make(map[ssh.Session]peerEntry),
-		onClose: onClose,
-		tail:    newTailBuffer(tailCapacity),
+		file:       f,
+		cmd:        c,
+		socks:      make(map[ssh.Session]peerEntry),
+		onClose:    onClose,
+		tail:       newTailBuffer(tailCapacity),
+		port:       port,
+		statusBar:  cfg.StatusBar.Enabled,
+		statusPos:  cfg.StatusBar.Position,
+		statusText: cfg.StatusBar.Suggestion,
+		cfg:        cfg,
 	}
 
 	go pm.broadcast()
@@ -360,7 +371,7 @@ func (pm *PTYManager) HandleSession(s ssh.Session, clientID string) {
 					pm.mu.Lock()
 					win := pm.socks[s].Window
 					pm.mu.Unlock()
-					choice, _ := RunMenu(s, chanReader{ch: bytesChan}, clientID, win.Width, win.Height, pm.Peers)
+					choice, _ := RunMenu(s, chanReader{ch: bytesChan}, clientID, win.Width, win.Height, pm.Peers, pm.ToggleStatusBar, pm.StatusBarEnabled())
 					if choice == "Disconnect" {
 						s.Close()
 						return
@@ -417,6 +428,9 @@ func (pm *PTYManager) updateSizeLocked() {
 	if first {
 		return
 	}
+	if pm.statusBar && minRows > 0 {
+		minRows--
+	}
 	if minRows == pm.lastRows && minCols == pm.lastCols {
 		return
 	}
@@ -459,4 +473,34 @@ func (pm *PTYManager) Close() {
 	if pm.cmd != nil && pm.cmd.Process != nil {
 		pm.cmd.Process.Kill()
 	}
+}
+
+// StatusBarEnabled reports whether the status bar is currently on.
+func (pm *PTYManager) StatusBarEnabled() bool {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	return pm.statusBar
+}
+
+// ToggleStatusBar flips the status bar on/off, recalculates the PTY size,
+// and triggers a SIGWINCH so all clients repaint. Returns the new state.
+func (pm *PTYManager) ToggleStatusBar() bool {
+	pm.mu.Lock()
+	pm.statusBar = !pm.statusBar
+	pm.lastRows = 0
+	pm.lastCols = 0
+	pm.updateSizeLocked()
+	pm.mu.Unlock()
+	pm.RefreshAll()
+	return pm.StatusBarEnabled()
+}
+
+// Port returns the SSH port this session is listening on.
+func (pm *PTYManager) Port() int {
+	return pm.port
+}
+
+// StatusBarPosition returns the configured position ("top" or "bottom").
+func (pm *PTYManager) StatusBarPosition() string {
+	return pm.statusPos
 }

@@ -18,7 +18,18 @@ var daemonCmd = &cobra.Command{
 	Use:   "daemon",
 	Short: "Start the Wisp management daemon",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		configPath, _ := cmd.Flags().GetString("config")
+		resolved, err := core.ResolveConfigPath(configPath)
+		if err != nil {
+			return fmt.Errorf("resolve config path: %w", err)
+		}
+		cfg, loadErr := core.LoadConfig(resolved)
+		if loadErr != nil {
+			log.Printf("config load: %v", loadErr)
+		}
+
 		d := core.NewDaemon()
+		d.Config = cfg
 		d.ShadowDir, _ = cmd.Flags().GetString("shadow-dir")
 		d.Env = parseEnvFlags(cmd)
 		if err := rpc.Register(d); err != nil {
@@ -47,6 +58,7 @@ var daemonCmd = &cobra.Command{
 }
 
 func init() {
+	daemonCmd.Flags().String("config", "", "Path to config file (defaults to ~/.config/wisp/config.toml)")
 	daemonCmd.Flags().String("shadow-dir", "", "Directory to prepend to PATH for all sessions (shadow binaries)")
 	daemonCmd.Flags().StringSlice("env", nil, "Environment overrides for all sessions (KEY=VALUE)")
 	rootCmd.AddCommand(daemonCmd)
