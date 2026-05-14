@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 
 	"charm.land/lipgloss/v2"
@@ -146,47 +145,6 @@ func (d *Daemon) StartServer(req *StartServerReq, res *ServerInfo) error {
 	return nil
 }
 
-// drawStatusBar paints an ANSI status line at the configured position
-// (top row 0 or bottom row h-1) on the given SSH session. The PTY is
-// sized at clientHeight-1, so this reserved row never clashes with
-// actual terminal content.
-func drawStatusBar(s ssh.Session, port int, pm *PTYManager, theme ThemeVariant, width, height int) {
-	if height == 0 || width == 0 {
-		return
-	}
-
-	row := height - 1
-	if pm.StatusBarPosition() == "top" {
-		row = 0
-	}
-
-	bg := lipgloss.Color(theme.PrimaryBG)
-	fg := lipgloss.Color(theme.PrimaryFG)
-	hintFg := lipgloss.Color(theme.SuggestionFG)
-
-	statusStyle := lipgloss.NewStyle().
-		Background(bg).
-		Foreground(fg).
-		Padding(0, 1)
-
-	hintStyle := lipgloss.NewStyle().
-		Background(bg).
-		Foreground(hintFg).
-		Padding(0, 1)
-
-	portLabel := statusStyle.Render(fmt.Sprintf("[ :%d ]", port))
-	hintLabel := hintStyle.Render(pm.statusText)
-
-	pad := width - lipgloss.Width(hintLabel) - lipgloss.Width(portLabel)
-	if pad < 0 {
-		pad = 0
-	}
-	bar := hintLabel + strings.Repeat(" ", pad) + portLabel
-
-	// Save cursor → move to indicator row → clear & paint → restore.
-	_, _ = s.Write([]byte(fmt.Sprintf("\033[s\033[%d;1H\033[2K%s\033[u", row+1, bar)))
-}
-
 func hostKeyPath(port int) (string, error) {
 	dataDir := os.Getenv("XDG_DATA_HOME")
 	if dataDir == "" {
@@ -237,13 +195,13 @@ func (d *Daemon) createSshServer(port int, id string, pm *PTYManager) (*ssh.Serv
 					}
 					pm.Attach(s, clientID, remote, ptyReq.Window)
 					if pm.StatusBarEnabled() {
-						drawStatusBar(s, port, pm, theme, ptyReq.Window.Width, ptyReq.Window.Height)
+						PaintStatusBar(s, port, pm.statusText, theme, pm.statusPos, ptyReq.Window.Width, ptyReq.Window.Height)
 					}
 					go func() {
 						for win := range winCh {
 							pm.Resize(s, win)
 							if pm.StatusBarEnabled() {
-								drawStatusBar(s, port, pm, theme, win.Width, win.Height)
+								PaintStatusBar(s, port, pm.statusText, theme, pm.statusPos, win.Width, win.Height)
 							}
 						}
 					}()

@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/ssh"
 	"github.com/creack/pty"
 )
@@ -207,6 +208,9 @@ func (pm *PTYManager) broadcast() {
 				dead = append(dead, s)
 			}
 		}
+
+		pm.paintStatusBars(sessions)
+
 		if len(dead) > 0 {
 			pm.mu.Lock()
 			for _, s := range dead {
@@ -503,4 +507,65 @@ func (pm *PTYManager) Port() int {
 // StatusBarPosition returns the configured position ("top" or "bottom").
 func (pm *PTYManager) StatusBarPosition() string {
 	return pm.statusPos
+}
+
+// paintStatusBars repaints the status bar on every attached client after
+// each PTY broadcast cycle, so applications that scroll (e.g. claude-code)
+// never overwrite the reserved bottom/top row. Only called from broadcast().
+func (pm *PTYManager) paintStatusBars(sessions []ssh.Session) {
+	if !pm.statusBar {
+		return
+	}
+	pm.mu.Lock()
+	theme := pm.cfg.Theme.Dark
+	pos := pm.statusPos
+	hintText := pm.statusText
+	port := pm.port
+	pm.mu.Unlock()
+
+	for _, s := range sessions {
+		pm.mu.Lock()
+		entry, ok := pm.socks[s]
+		pm.mu.Unlock()
+		if !ok || entry.Window.Width == 0 || entry.Window.Height == 0 {
+			continue
+		}
+		PaintStatusBar(s, port, hintText, theme, pos, entry.Window.Width, entry.Window.Height)
+	}
+}
+
+// PaintStatusBar paints an ANSI status line onto the given SSH session.
+// Exported so the daemon middleware can show the bar on initial attach
+// and resize; the steady-state repaint happens via broadcast → paintStatusBars.
+func PaintStatusBar(s ssh.Session, port int, hintText string, theme ThemeVariant, pos string, width, height int) {
+	row := height - 1
+	if pos == "top" {
+		row = 0
+	}
+
+	bg := lipgloss.Color(theme.PrimaryBG)
+	fg := lipgloss.Color(theme.PrimaryFG)
+	hintFg := lipgloss.Color(theme.SuggestionFG)
+
+	statusStyle := lipgloss.NewStyle().
+		Background(bg).
+		Foreground(fg).
+		Padding(0, 1)
+
+	hintStyle := lipgloss.NewStyle().
+		Background(bg).
+		Foreground(hintFg).
+		Padding(0, 1)
+
+	portLabel := statusStyle.Render(fmt.Sprintf("[ :%d ]", port))
+	hintLabel := hintStyle.Render(hintText)
+
+	pad := width - lipgloss.Width(hintLabel) - lipgloss.Width(portLabel)
+	if pad < 0 {
+		pad = 0
+	}
+	bar := hintLabel + strings.Repeat(" ", pad) + portLabel
+
+	// Save cursor → move to indicator row → clear & paint → restore.
+	_, _ = s.Write([]byte(fmt.Sprintf("\033[s\033[%d;1H\033[2K%s\033[u", row+1, bar)))
 }
