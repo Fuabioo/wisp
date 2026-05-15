@@ -79,6 +79,7 @@ type PTYManager struct {
 	cmd      *exec.Cmd
 	mu       sync.Mutex
 	socks    map[ssh.Session]peerEntry
+	paused   map[ssh.Session]bool
 	onClose  func()
 	lastRows uint16
 	lastCols uint16
@@ -155,6 +156,7 @@ func NewPTYManager(shell string, shadowDir string, env map[string]string, onClos
 		file:       f,
 		cmd:        c,
 		socks:      make(map[ssh.Session]peerEntry),
+		paused:     make(map[ssh.Session]bool),
 		onClose:    onClose,
 		tail:       newTailBuffer(tailCapacity),
 		port:       port,
@@ -196,7 +198,9 @@ func (pm *PTYManager) broadcast() {
 		pm.mu.Lock()
 		sessions := make([]ssh.Session, 0, len(pm.socks))
 		for s := range pm.socks {
-			sessions = append(sessions, s)
+			if !pm.paused[s] {
+				sessions = append(sessions, s)
+			}
 		}
 		pm.mu.Unlock()
 
@@ -215,6 +219,7 @@ func (pm *PTYManager) broadcast() {
 			pm.mu.Lock()
 			for _, s := range dead {
 				delete(pm.socks, s)
+				delete(pm.paused, s)
 			}
 			pm.mu.Unlock()
 		}
@@ -286,6 +291,21 @@ func (pm *PTYManager) Stats() SessionStats {
 	}
 }
 
+// Pause marks a session as paused so broadcast skips it (e.g. while the
+// pause menu is shown). Must be paired with Resume.
+func (pm *PTYManager) Pause(s ssh.Session) {
+	pm.mu.Lock()
+	pm.paused[s] = true
+	pm.mu.Unlock()
+}
+
+// Resume clears the paused flag so broadcast resumes writing to the session.
+func (pm *PTYManager) Resume(s ssh.Session) {
+	pm.mu.Lock()
+	delete(pm.paused, s)
+	pm.mu.Unlock()
+}
+
 // RefreshAll perturbs the PTY size by +1 then back to the original to
 // generate a SIGWINCH on the foreground process. TUIs like claude-code
 // repaint their full UI on resize, so this gives a peer who attached
@@ -327,6 +347,7 @@ func (pm *PTYManager) HandleSession(s ssh.Session, clientID string) {
 	defer func() {
 		pm.mu.Lock()
 		delete(pm.socks, s)
+		delete(pm.paused, s)
 		pm.updateSizeLocked()
 		pm.mu.Unlock()
 	}()
@@ -375,7 +396,10 @@ func (pm *PTYManager) HandleSession(s ssh.Session, clientID string) {
 					pm.mu.Lock()
 					win := pm.socks[s].Window
 					pm.mu.Unlock()
-					choice, _ := RunMenu(s, chanReader{ch: bytesChan}, clientID, win.Width, win.Height, pm.Peers, pm.ToggleStatusBar, pm.StatusBarEnabled())
+					pm.Pause(s)
+					choice, _ := RunMenu(s, chanReader{ch: bytesChan}, clientID, win.Width, win.Height, pm.Peers, pm.ToggleStatusBar, pm.StatusBarEnabled(), pm.RefreshAll)
+					pm.Resume(s)
+					pm.RefreshAll()
 					if choice == "Disconnect" {
 						s.Close()
 						return

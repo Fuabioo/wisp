@@ -194,6 +194,7 @@ func (d *Daemon) createSshServer(port int, id string, pm *PTYManager) (*ssh.Serv
 						remote = addr.String()
 					}
 					pm.Attach(s, clientID, remote, ptyReq.Window)
+					pm.RefreshAll()
 					if pm.StatusBarEnabled() {
 						PaintStatusBar(s, port, pm.statusText, theme, pm.statusPos, ptyReq.Window.Width, ptyReq.Window.Height)
 					}

@@ -25,6 +25,7 @@ const (
 	actionDisconnect
 	actionShowPeers
 	actionToggleStatusBar
+	actionRefreshTUI
 )
 
 type menuItem struct {
@@ -45,6 +46,7 @@ type MenuModel struct {
 	peersErr    string
 	statusBarOn bool
 	toggleFn    func() bool
+	refreshFn   func()
 }
 
 // RunMenu runs the pause menu over an SSH session. peersFn is called lazily
@@ -52,17 +54,20 @@ type MenuModel struct {
 // PTYManager.Peers) so the menu always shows current state. toggleFn is
 // invoked when the user selects "Toggle status bar" and must return the
 // new enabled state. statusBarOn controls the initial checkmark state.
+// refreshFn is called when the user selects "Refresh TUI".
 // width/height are the client's PTY window dimensions; bubbletea v2 needs
 // them explicitly when the output isn't a *os.File TTY.
-func RunMenu(s ssh.Session, input io.Reader, clientID string, width, height int, peersFn func() []PeerInfo, toggleFn func() bool, statusBarOn bool) (string, error) {
+func RunMenu(s ssh.Session, input io.Reader, clientID string, width, height int, peersFn func() []PeerInfo, toggleFn func() bool, statusBarOn bool, refreshFn func()) (string, error) {
 	m := MenuModel{
 		session:     s,
 		clientID:    clientID,
 		peersFn:     peersFn,
 		statusBarOn: statusBarOn,
 		toggleFn:    toggleFn,
+		refreshFn:   refreshFn,
 		items: []menuItem{
 			{label: "Resume", action: actionResume},
+			{label: "Refresh TUI", action: actionRefreshTUI},
 			{label: "List peers", action: actionShowPeers},
 			{label: "Toggle status bar", action: actionToggleStatusBar},
 			{label: "Disconnect", action: actionDisconnect},
@@ -142,6 +147,11 @@ func (m MenuModel) activate() (tea.Model, tea.Cmd) {
 	case actionToggleStatusBar:
 		if m.toggleFn != nil {
 			m.statusBarOn = m.toggleFn()
+		}
+		return m, nil
+	case actionRefreshTUI:
+		if m.refreshFn != nil {
+			m.refreshFn()
 		}
 		return m, nil
 	}
