@@ -146,11 +146,16 @@ brews:
         [Install]
         WantedBy=default.target
       EOS
+    service: |
+      run [opt_bin/"wisp", "daemon"]
+      keep_alive true
+      run_type :immediate
+      environment_variables PATH: std_service_path_env
+      log_path var/"log/wisp.log"
+      error_log_path var/"log/wisp.log"
     caveats: |
-      Wisp has been installed as #{opt_bin}/wisp.
-
-      To start the daemon manually:
-        wisp daemon
+      To start the daemon now and on login:
+        brew services start wisp
 
       To start a shared terminal session:
         wisp server --port 8082
