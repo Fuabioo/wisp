@@ -88,22 +88,26 @@ release:
 
     ### Installation
 
-    **Homebrew (recommended for Linux):**
+    **Homebrew (recommended for Linux/macOS):**
     ```bash
     brew tap Fuabioo/homebrew-private-tap
     brew install wisp
+
+    # Start the daemon (auto-starts on login)
+    brew services start wisp
     ```
 
     **Binary downloads:**
     Download the archive for your platform from the assets below, extract, and run:
     ```bash
     tar xzf wisp_*.tar.gz
-    ./wisp --version
+    ./wisp daemon &
     ```
 
     **From source:**
     ```bash
     go install github.com/Fuabioo/wisp@{{ .Tag }}
+    wisp daemon &
     ```
 
 brews:
