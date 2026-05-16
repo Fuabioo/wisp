@@ -13,10 +13,10 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
     container(
         Column::new()
             .push(ghost_art::view::<Message>(160.0, app.anim_phase))
-            .push(text("wisp-admin").size(28).font(cosmic::font::mono()))
+            .push(text("wisp-desktop").size(28).font(cosmic::font::mono()))
             .push(text(format!("v{}", VERSION)).font(cosmic::font::mono()))
             .push(text(""))
-            .push(text("COSMIC-native admin GUI for the wisp daemon."))
+            .push(text("COSMIC-native desktop GUI for the wisp daemon."))
             .push(text(
                 "Made with charm — wish, lipgloss, bubbletea — and libcosmic.",
             ))

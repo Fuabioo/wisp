@@ -1,6 +1,6 @@
-# wisp-admin
+# wisp-desktop
 
-Pop!\_OS COSMIC-native admin GUI for the [wisp](..) daemon. Built with
+Pop!\_OS COSMIC-native desktop GUI for the [wisp](..) daemon. Built with
 [`libcosmic`](https://github.com/pop-os/libcosmic) (Rust + iced).
 
 The design lives in `~/.claude/plans/help-me-design-a-curried-porcupine.md`

@@ -1,4 +1,4 @@
-// wisp-admin — Pop!_OS COSMIC-native admin GUI for the wisp daemon.
+// wisp-desktop — Pop!_OS COSMIC-native desktop GUI for the wisp daemon.
 //
 // Architecture: see ../docs/adr/0002-cosmic-admin-gui.md
 

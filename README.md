@@ -32,7 +32,7 @@ following, transparency + blur, auto-following event tape. Built with
 
 ```bash
 just gui-run        # debug build + run
-just gui-release    # optimized build (`./gui/target/release/wisp-admin`)
+just gui-release    # optimized build (`./gui/target/release/wisp-desktop`)
 ```
 
 System dependencies and architecture notes are in

@@ -118,9 +118,9 @@ impl Settings {
 
 fn config_path() -> PathBuf {
     if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
-        PathBuf::from(xdg).join("wisp-admin/settings.toml")
+        PathBuf::from(xdg).join("wisp-desktop/settings.toml")
     } else if let Some(home) = std::env::var_os("HOME") {
-        PathBuf::from(home).join(".config/wisp-admin/settings.toml")
+        PathBuf::from(home).join(".config/wisp-desktop/settings.toml")
     } else {
         PathBuf::from("settings.toml")
     }

@@ -1,9 +1,9 @@
 [Desktop Entry]
-Name=Wisp Admin
+Name=Wisp Desktop
 GenericName=Shared Terminal Manager
 Comment=Manage wisp PTY sessions and attached peers
-Exec=wisp-admin
-Icon=wisp-admin
+Exec=wisp-desktop
+Icon=dev.fabiomora.WispAdmin
 Type=Application
 Terminal=false
 Categories=Utility;System;TerminalEmulator;

@@ -9,6 +9,7 @@ project_name: wisp
 before:
   hooks:
     - go mod tidy
+    - cargo install cargo-zigbuild
 
 builds:
   - id: wisp
@@ -28,6 +29,18 @@ builds:
       - -X github.com/Fuabioo/wisp/cmd.CommitSHA={{ .ShortCommit }}
       - -X github.com/Fuabioo/wisp/cmd.BuildDate={{ .Date }}
 
+  - id: wisp-desktop
+    builder: rust
+    dir: gui
+    binary: wisp-desktop
+    command: zigbuild
+    flags:
+      - --release
+      - --package=wisp-desktop
+    targets:
+      - x86_64-unknown-linux-gnu
+      - aarch64-unknown-linux-gnu
+
 archives:
   - id: wisp
     formats: [tar.gz]
@@ -38,6 +51,20 @@ archives:
       {{- .Arch }}
     files:
       - README.md
+
+  - id: wisp-desktop
+    ids:
+      - wisp-desktop
+    formats: [tar.gz]
+    name_template: >-
+      wisp-desktop_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    files:
+      - README.md
+      - gui/data/desktop/*.desktop
+      - assets/logo-wisp.svg
 
 checksum:
   name_template: checksums.txt
@@ -91,7 +118,7 @@ release:
     **Homebrew (recommended for Linux/macOS):**
     ```bash
     brew tap Fuabioo/homebrew-private-tap
-    brew install wisp
+    brew install wisp wisp-desktop
 
     # Start the daemon (auto-starts on login)
     brew services start wisp
@@ -100,8 +127,13 @@ release:
     **Binary downloads:**
     Download the archive for your platform from the assets below, extract, and run:
     ```bash
+    # CLI daemon
     tar xzf wisp_*.tar.gz
     ./wisp daemon &
+
+    # COSMIC desktop GUI (requires Wayland + libcosmic deps)
+    tar xzf wisp-desktop_*.tar.gz
+    ./wisp-desktop
     ```
 
     **From source:**
@@ -166,3 +198,36 @@ brews:
 
       To connect to the session:
         ssh -p 8082 localhost
+
+  - name: wisp-desktop
+    ids:
+      - wisp-desktop
+    repository:
+      owner: Fuabioo
+      name: homebrew-private-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    goamd64: v1
+    url_template: "https://github.com/Fuabioo/wisp/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    directory: Formula
+    homepage: "https://github.com/Fuabioo/wisp"
+    description: "COSMIC-native desktop GUI for the wisp terminal daemon"
+    license: "MIT"
+    skip_upload: auto
+    download_strategy: GitHubPrivateRepositoryReleaseDownloadStrategy
+    custom_require: "../custom_download_strategy"
+    install: |
+      bin.install "wisp-desktop"
+      (share/"applications").install "gui/data/desktop/dev.fabiomora.WispAdmin.desktop" => "dev.fabiomora.WispAdmin.desktop"
+      (share/"icons/hicolor/scalable/apps").install "assets/logo-wisp.svg" => "dev.fabiomora.WispAdmin.svg"
+    caveats: |
+      Wisp Desktop is a COSMIC-native desktop app.
+
+      To launch:
+        wisp-desktop
+
+      Requires the wisp daemon to be running:
+        brew services start wisp

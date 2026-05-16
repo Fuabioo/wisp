@@ -1,13 +1,13 @@
 [package]
-name = "wisp-admin"
+name = "wisp-desktop"
 version = "0.1.0"
 edition = "2024"
-description = "COSMIC-native admin GUI for the wisp daemon."
+description = "COSMIC-native desktop GUI for the wisp daemon."
 license = "MIT"
 publish = false
 
 [[bin]]
-name = "wisp-admin"
+name = "wisp-desktop"
 path = "src/main.rs"
 
 [dependencies]

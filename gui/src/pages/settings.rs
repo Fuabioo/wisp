@@ -15,7 +15,7 @@ pub fn view<'a>(app: &'a WispAdmin) -> Element<'a, Message> {
     let header = Column::new()
         .push(text("settings").size(24).font(cosmic::font::mono()))
         .push(text(
-            "Persisted to $XDG_CONFIG_HOME/wisp-admin/settings.toml — \
+            "Persisted to $XDG_CONFIG_HOME/wisp-desktop/settings.toml — \
              applied to subsequent spawns.",
         ))
         .spacing(6);
