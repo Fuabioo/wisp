@@ -1,12 +1,20 @@
-default: build-micro
+os := `uname -s | tr '[:upper:]' '[:lower:]'`
+arch := `uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/'`
+gobin := `echo "${GOBIN:-${HOME}/.local/bin}"`
 
-# Build a minimally sized optimized Go binary
+default: build
+
+# Build via goreleaser (single source of truth)
 build:
-    go build -trimpath -ldflags="-s -w -X 'github.com/Fuabioo/wisp/cmd.Version=dev' -X 'github.com/Fuabioo/wisp/cmd.CommitSHA=$(git rev-parse --short HEAD 2>/dev/null || echo none)' -X 'github.com/Fuabioo/wisp/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)'" -o wisp .
+    goreleaser build --snapshot --clean
+
+# Fast local build (single target, no cross-compile)
+build-fast:
+    goreleaser build --snapshot --single-target --clean
 
 # Ultra-compressed build (requires 'upx' to be installed on your system)
 build-micro: build
-    upx --best --lzma wisp
+    upx --best --lzma dist/wisp_linux_amd64_v1/wisp
 
 # Run the wisp daemon
 daemon:
@@ -49,11 +57,31 @@ install-deps:
     elif command -v apt-get >/dev/null 2>&1; then sudo apt-get install -y upx-ucl; \
     else echo "Please install UPX manually for your system."; fi
 
-# Install an optimized dev build to ~/.local/bin to avoid colliding with a prod install
-install-dev: build-micro
-    mkdir -p ~/.local/bin
-    mv wisp ~/.local/bin/wisp-dev
-    @echo "wisp-dev installed to ~/.local/bin/wisp-dev" && wisp-dev --version
+# Install dev binary to PATH (with -dev suffix to avoid prod collisions)
+install-dev: build
+    #!/usr/bin/env sh
+    set -e
+    if [ "{{ os }}" = "darwin" ] && [ "{{ arch }}" = "arm64" ]; then
+        src="dist/wisp_darwin_arm64/wisp"
+    elif [ "{{ os }}" = "darwin" ] && [ "{{ arch }}" = "amd64" ]; then
+        src="dist/wisp_darwin_amd64_v1/wisp"
+    elif [ "{{ os }}" = "linux" ] && [ "{{ arch }}" = "arm64" ]; then
+        src="dist/wisp_linux_arm64/wisp"
+    elif [ "{{ os }}" = "linux" ] && [ "{{ arch }}" = "amd64" ]; then
+        src="dist/wisp_linux_amd64_v1/wisp"
+    else
+        echo "Unknown platform: {{ os }}/{{ arch }}"
+        exit 1
+    fi
+    mkdir -p "{{ gobin }}"
+    cp "$src" "{{ gobin }}/wisp-dev"
+    echo "Installed wisp-dev to {{ gobin }}/wisp-dev"
+
+# Install the UPX-compressed dev binary
+install-micro: build-micro
+    mkdir -p "{{ gobin }}"
+    cp dist/wisp_linux_amd64_v1/wisp "{{ gobin }}/wisp-dev"
+    echo "Installed wisp-dev to {{ gobin }}/wisp-dev"
 
 # Check if required tools are installed
 check-deps:
@@ -61,12 +89,21 @@ check-deps:
     @command -v gsa >/dev/null 2>&1 && echo "✅ gsa is installed" || echo "❌ gsa is missing (run: just install-deps)"
     @command -v upx >/dev/null 2>&1 && echo "✅ upx is installed" || echo "❌ upx is missing (run: just install-deps)"
 
+# Create full snapshot (archives + checksums, no publish)
+snapshot:
+    goreleaser release --snapshot --clean
+
+# Clean build artifacts
+clean:
+    rm -rf dist/
+
 # Fast dev install: builds wisp-dev (no UPX) so the GUI can shell out to a
 # fresh CLI without the prod `wisp` binary getting in the way. Used by
-# `gui-run`. Plain `install-dev` still does the upx pass for a deployable bin.
-install-dev-fast:
-    mkdir -p ~/.local/bin
-    go build -trimpath -ldflags="-X 'github.com/Fuabioo/wisp/cmd.Version=dev' -X 'github.com/Fuabioo/wisp/cmd.CommitSHA=$(git rev-parse --short HEAD 2>/dev/null || echo none)' -X 'github.com/Fuabioo/wisp/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)'" -o ~/.local/bin/wisp-dev .
+# `gui-run`. Uses the single-target build for speed.
+install-dev-fast: build-fast
+    mkdir -p "{{ gobin }}"
+    cp dist/wisp_linux_amd64_v1/wisp "{{ gobin }}/wisp-dev"
+    echo "Installed wisp-dev to {{ gobin }}/wisp-dev"
 
 # Type-check the COSMIC admin GUI without producing a binary
 gui-check:
@@ -107,7 +144,7 @@ gui-release:
 # Provision wisp as a user-level systemd daemon
 provision: build-micro
     mkdir -p ~/.local/bin
-    cp wisp ~/.local/bin/wisp
+    cp dist/wisp_linux_amd64_v1/wisp ~/.local/bin/wisp
     mkdir -p ~/.config/systemd/user
     @echo "[Unit]" > ~/.config/systemd/user/wisp.service
     @echo "Description=Wisp Terminal Daemon" >> ~/.config/systemd/user/wisp.service

@@ -5,3 +5,4 @@ prism
 .crush/
 .claude/settings.local.json
 *.upx
+dist/

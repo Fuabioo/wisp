@@ -1,0 +1,159 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# GoReleaser configuration for Wisp
+# Documentation: https://goreleaser.com/customization/
+
+version: 2
+
+project_name: wisp
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: wisp
+    main: .
+    binary: wisp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/Fuabioo/wisp/cmd.Version={{ .Version }}
+      - -X github.com/Fuabioo/wisp/cmd.CommitSHA={{ .ShortCommit }}
+      - -X github.com/Fuabioo/wisp/cmd.BuildDate={{ .Date }}
+
+archives:
+  - id: wisp
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- if eq .Os "darwin" }}macos{{ else }}{{ .Os }}{{ end }}_
+      {{- .Arch }}
+    files:
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Performance
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Refactoring
+      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: Other
+      order: 999
+
+release:
+  github:
+    owner: Fuabioo
+    name: wisp
+  draft: false
+  prerelease: auto
+  name_template: "v{{ .Version }}"
+  header: |
+    ## Wisp {{ .Version }}
+
+    A lightweight daemon for spawning and sharing PTY-backed terminal sessions over SSH.
+  footer: |
+    ---
+
+    **Full Changelog**: https://github.com/Fuabioo/wisp/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+    ### Installation
+
+    **Homebrew (recommended for Linux):**
+    ```bash
+    brew tap Fuabioo/homebrew-private-tap
+    brew install wisp
+    ```
+
+    **Binary downloads:**
+    Download the archive for your platform from the assets below, extract, and run:
+    ```bash
+    tar xzf wisp_*.tar.gz
+    ./wisp --version
+    ```
+
+    **From source:**
+    ```bash
+    go install github.com/Fuabioo/wisp@{{ .Tag }}
+    ```
+
+brews:
+  - name: wisp
+    ids:
+      - wisp
+    repository:
+      owner: Fuabioo
+      name: homebrew-private-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    goamd64: v1
+    url_template: "https://github.com/Fuabioo/wisp/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    directory: Formula
+    homepage: "https://github.com/Fuabioo/wisp"
+    description: "Lightweight daemon for spawning and sharing PTY-backed terminal sessions over SSH"
+    license: "MIT"
+    skip_upload: auto
+    download_strategy: GitHubPrivateRepositoryReleaseDownloadStrategy
+    custom_require: "../custom_download_strategy"
+    install: |
+      bin.install "wisp"
+    post_install: |
+      # Install user-level systemd service
+      mkdir_p etc/"systemd/user"
+      systemd_service = etc/"systemd/user/wisp.service"
+      systemd_service.write <<~EOS
+        [Unit]
+        Description=Wisp Terminal Daemon
+        After=network.target
+
+        [Service]
+        Type=simple
+        ExecStart=#{opt_bin}/wisp daemon
+        Restart=on-failure
+
+        [Install]
+        WantedBy=default.target
+      EOS
+    caveats: |
+      Wisp has been installed as #{opt_bin}/wisp.
+
+      To start the daemon manually:
+        wisp daemon
+
+      To start a shared terminal session:
+        wisp server --port 8082
+
+      To connect to the session:
+        ssh -p 8082 localhost

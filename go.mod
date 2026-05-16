@@ -7,6 +7,7 @@ require (
 	charm.land/fang/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.3
 	charm.land/wish/v2 v2.0.1
+	github.com/BurntSushi/toml v1.6.0
 	github.com/charmbracelet/ssh v0.0.0-20250826160808-ebfa259c7309
 	github.com/creack/pty v1.1.24
 	github.com/google/uuid v1.6.0
@@ -15,7 +16,6 @@ require (
 
 require (
 	charm.land/log/v2 v2.0.0 // indirect
-	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/keygen v0.5.4 // indirect
