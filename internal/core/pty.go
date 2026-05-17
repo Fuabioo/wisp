@@ -147,6 +147,7 @@ func NewPTYManager(shell string, shadowDir string, env map[string]string, onClos
 	for k, v := range env {
 		c.Env = setEnv(c.Env, k, v)
 	}
+	c.Env = setEnvDefault(c.Env, "TERM", "xterm-256color")
 	f, err := pty.Start(c)
 	if err != nil {
 		return nil, fmt.Errorf("start pty: %w", err)
@@ -488,6 +489,20 @@ func setEnv(env []string, key, value string) []string {
 	for i, e := range env {
 		if len(e) > len(prefix) && e[:len(prefix)] == prefix {
 			env[i] = prefix + value
+			return env
+		}
+	}
+	return append(env, prefix+value)
+}
+
+// setEnvDefault sets key=value only if the key is absent or has an empty
+// value. Used to backfill TERM when the daemon runs under a systemd user unit
+// that does not export it — without TERM the spawned shell loses terminfo
+// capabilities (no colour, broken backspace, autosuggest residue).
+func setEnvDefault(env []string, key, value string) []string {
+	prefix := key + "="
+	for _, e := range env {
+		if len(e) > len(prefix) && e[:len(prefix)] == prefix {
 			return env
 		}
 	}
