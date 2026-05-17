@@ -225,6 +225,14 @@ brews:
       bin.install "wisp-desktop"
       (share/"applications").install "gui/data/desktop/dev.fabiomora.WispAdmin.desktop" => "dev.fabiomora.WispAdmin.desktop"
       (share/"icons/hicolor/scalable/apps").install "assets/logo-wisp.svg" => "dev.fabiomora.WispAdmin.svg"
+    post_install: |
+      user_apps = File.expand_path("~/.local/share/applications")
+      user_icons = File.expand_path("~/.local/share/icons/hicolor/scalable/apps")
+      mkdir_p user_apps
+      mkdir_p user_icons
+      ln_sf share/"applications/dev.fabiomora.WispAdmin.desktop", "#{user_apps}/dev.fabiomora.WispAdmin.desktop"
+      ln_sf share/"icons/hicolor/scalable/apps/dev.fabiomora.WispAdmin.svg", "#{user_icons}/dev.fabiomora.WispAdmin.svg"
+      system "gtk-update-icon-cache", "-f", "-t", File.expand_path("~/.local/share/icons/hicolor") if File.exist?("/usr/bin/gtk-update-icon-cache")
     caveats: |
       Wisp Desktop is a COSMIC-native desktop app.
 
