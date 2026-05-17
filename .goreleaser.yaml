@@ -119,7 +119,7 @@ release:
 
     **Homebrew (recommended for Linux/macOS):**
     ```bash
-    brew tap Fuabioo/homebrew-private-tap
+    brew tap Fuabioo/homebrew-tap
     brew install wisp wisp-desktop
 
     # Start the daemon (auto-starts on login)
@@ -150,7 +150,7 @@ brews:
       - wisp
     repository:
       owner: Fuabioo
-      name: homebrew-private-tap
+      name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     goamd64: v1
@@ -163,8 +163,6 @@ brews:
     description: "Lightweight daemon for spawning and sharing PTY-backed terminal sessions over SSH"
     license: "MIT"
     skip_upload: auto
-    download_strategy: GitHubPrivateRepositoryReleaseDownloadStrategy
-    custom_require: "../custom_download_strategy"
     install: |
       bin.install "wisp"
     post_install: |
@@ -206,7 +204,7 @@ brews:
       - wisp-desktop
     repository:
       owner: Fuabioo
-      name: homebrew-private-tap
+      name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     goamd64: v1
@@ -219,18 +217,32 @@ brews:
     description: "COSMIC-native desktop GUI for the wisp terminal daemon"
     license: "MIT"
     skip_upload: auto
-    download_strategy: GitHubPrivateRepositoryReleaseDownloadStrategy
-    custom_require: "../custom_download_strategy"
     install: |
       bin.install "wisp-desktop"
-      (share/"applications").install "gui/data/desktop/dev.fabiomora.WispAdmin.desktop" => "dev.fabiomora.WispAdmin.desktop"
       (share/"icons/hicolor/scalable/apps").install "assets/logo-wisp.svg" => "dev.fabiomora.WispAdmin.svg"
     post_install: |
+      # Write desktop entry with correct PATH so wisp-desktop can find `wisp`
+      desktop = share/"applications/dev.fabiomora.WispAdmin.desktop"
+      desktop.write <<~DESKTOP
+        [Desktop Entry]
+        Name=Wisp Desktop
+        GenericName=Shared Terminal Manager
+        Comment=Manage wisp PTY sessions and attached peers
+        Exec=env PATH=#{HOMEBREW_PREFIX}/bin:#{ENV["PATH"]} wisp-desktop
+        Icon=dev.fabiomora.WispAdmin
+        Type=Application
+        Terminal=false
+        Categories=Utility;System;TerminalEmulator;
+        Keywords=wisp;ssh;pty;terminal;session;
+        StartupNotify=true
+        StartupWMClass=dev.fabiomora.WispAdmin
+      DESKTOP
+
       user_apps = File.expand_path("~/.local/share/applications")
       user_icons = File.expand_path("~/.local/share/icons/hicolor/scalable/apps")
       mkdir_p user_apps
       mkdir_p user_icons
-      ln_sf share/"applications/dev.fabiomora.WispAdmin.desktop", "#{user_apps}/dev.fabiomora.WispAdmin.desktop"
+      ln_sf desktop, "#{user_apps}/dev.fabiomora.WispAdmin.desktop"
       ln_sf share/"icons/hicolor/scalable/apps/dev.fabiomora.WispAdmin.svg", "#{user_icons}/dev.fabiomora.WispAdmin.svg"
       system "gtk-update-icon-cache", "-f", "-t", File.expand_path("~/.local/share/icons/hicolor") if File.exist?("/usr/bin/gtk-update-icon-cache")
     caveats: |
