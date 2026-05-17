@@ -43,6 +43,8 @@ builds:
 
 archives:
   - id: wisp
+    ids:
+      - wisp
     formats: [tar.gz]
     name_template: >-
       {{ .ProjectName }}_
