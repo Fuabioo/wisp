@@ -9,7 +9,6 @@ project_name: wisp
 before:
   hooks:
     - go mod tidy
-    - cargo install cargo-zigbuild
 
 builds:
   - id: wisp
@@ -39,7 +38,8 @@ builds:
       - --package=wisp-desktop
     targets:
       - x86_64-unknown-linux-gnu
-      - aarch64-unknown-linux-gnu
+    # aarch64 requires cross-compilation sysroots with wayland/xkbcommon
+    # - aarch64-unknown-linux-gnu
 
 archives:
   - id: wisp
